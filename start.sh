@@ -6,6 +6,19 @@ export DISPLAY=:1
 export XDG_RUNTIME_DIR=/tmp/runtime-root
 mkdir -p "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
 
+
+# Désactiver la composition (évite "Another compositing manager...")
+xfconf-query -c xfwm4 -p /general/use_compositing -s false 2>/dev/null || true
+# Désactiver l'autostart des services qui bavardent (power-manager, screensaver, polkit-gnome)
+mkdir -p /root/.config/autostart
+for svc in xfce4-power-manager xfce4-screensaver polkit-gnome-authentication-agent-1; do
+  if [ -f "/etc/xdg/autostart/${svc}.desktop" ]; then
+    cp "/etc/xdg/autostart/${svc}.desktop" /root/.config/autostart/ || true
+    sed -i 's/^Hidden=.*/Hidden=true/; $a Hidden=true' "/root/.config/autostart/${svc}.desktop" || true
+  fi
+done
+
+
 Xvfb :1 -screen 0 1280x800x24 +extension RANDR &
 sleep 1
 dbus-launch startxfce4 >/tmp/xfce.log 2>&1 || true &

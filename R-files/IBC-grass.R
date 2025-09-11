@@ -22,14 +22,16 @@ rm(list=ls())
 
 # load necessary packages
 library(RGtk2)
+Sys.getenv("DISPLAY")  # must be :1
 library(RGtk2Extras)
+library(labeling)
 library(data.table)
 library(reshape2)
 library(ggplot2)
 library(ggthemes)
 library(foreach)
 library(doParallel)
-library(labeling)
+
 
 # load necessary files
 source('R-files/Welcome.R')
@@ -69,7 +71,9 @@ assign("EstablishmentEff", F, envir=IBCvariables)                             # 
 assign("SeedSterilityEff", F, envir=IBCvariables)                             # whether seed sterility is affected
 assign("SeedNumberEff", F, envir=IBCvariables)                                # whether seed number is affected
 assign("origFiles",list.files(getwd()), envir=IBCvariables)                   # original files of GUI software -> should not be deleted
+
 lookuptable <- read.table("Input-files/PFTtoSpecies.txt", sep="\t", header=T)[,1:2] # lookup table for species -> PFT classification
+
 assign("PFTtoSpecies", lookuptable, envir=IBCvariables)                       # lookup table for species -> PFT classification
 assign("IBCherbeffect", "", envir = IBCvariables)                             # herbicide effect
 assign("EffectData", NULL, envir=IBCvariables)                                # effect data

@@ -39,11 +39,46 @@ doParallel	1.0.14
 ggplot2		3.1.0   
 ggthemes	4.0.1   
 
-The software might be used on Ubuntu OS, if R including all necessary packages are installed locally. In that case the file "RunIBCgrassGUI.bat" needs to be adapted. Please contact jreeg@uni-potsdam.de for further details.
+The software might be used on Ubuntu OS, if R including all necessary
+packages are installed locally.
+In that case the file "RunIBCgrassGUI.bat" needs to be adapted.
+(Please contact jreeg@uni-potsdam.de for further details.)
 
 
-# Using the Docker Image to Run IBC-grass without GUI.
 
+# Using the Docker Image to Run IBC-grass without
+
+Build the image:
+```bash
+docker build -t ibcgrass-runner .
+```
+
+Run a container:
+```bash
+docker run -it --rm ibcgrass-runner
+```
+To have after running from
+```bash
+docker ps
+docker exec -it <CID> bash
+docker exec -it 2f82c469abf bash
+```
+
+Inside the container, run a simulation:
+```bash
+Rscript run_control.R
+# or
+Rscript run_herbicide.R
+```
+
+Output files will be located in /home/rstudio/IBCgrass/Model-files/
+To get files out of the container, use `docker cp` or mount a volume:
+```bash
+docker run -it --rm -v $(pwd)/output:/home/rstudio/IBCgrass/Model-files ibcgrass-runner
+```
+This will map the container's output directory to a local 'output' directory.
+
+# Using the Docker Image to Run IBC-grass with GUI
 
 ```bash
 docker build -t ibcgrassgui:vnc -f Dockerfile.vnc .
@@ -52,28 +87,21 @@ docker run --rm -it -p 6080:6080 ibcgrassgui:vnc
 
 Then open http://localhost:6080 in the browser.
 
+You can access directly to the software by using:
+```bash
+http://localhost:6080/vnc.html?autoconnect=1&host=localhost&port=6080&path=websockify
+```
+
 If required, we can access the image using:
 ```bash
 docker run --rm -it --entrypoint bash ibcgrassgui:vnc
 ```
 
 ```bash
+docker ps # and record the container ID
+CID="d4214b172be7"
 # remplace <CID> par l’ID/nom du conteneur déjà en marche
-docker exec -it -e DISPLAY=:1 -e XDG_RUNTIME_DIR=/tmp/runtime-root <CID> R
-```
-
-To run without GUI, from entrypoint, you can run this:
-
-First comile the file `Model-files` with:
-
-```bash
-bash Model-files/CompileIBC_linux.sh
-```
-
-And then:
-
-```bash
-export DISPLAY=:1
-Xvfb :1 -screen 0 1280x800x24 &
-Rscript /opt/IBCgrassGUI/RunIBCwithoutGUI.R
+docker exec -it -e DISPLAY=:1 -e XDG_RUNTIME_DIR=/tmp/runtime-root $CID R
+# Or to go in the bash
+docker exec -it -e DISPLAY=:1 -e XDG_RUNTIME_DIR=/tmp/runtime-root $CID bash
 ```

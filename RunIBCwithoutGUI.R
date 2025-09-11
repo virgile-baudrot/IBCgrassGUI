@@ -3,12 +3,14 @@
 #####
 library(foreach)
 library(doParallel)
-library(labeling)s
+library(labeling)
 #####
 # Notes
 #####
 # -------------- Make sure to compile IBC before running this code ----------- #
-# ----------------- run Model-files/CompileIBC.bat --------------------------- #
+# -------------- FOR WINDOWS: run Model-files/CompileIBC.bat --------------- #
+# -------------- FOR MAC OS: bash Model-files/CompileIBC_linux.sh
+# ----------------- --------------------------- #
 # code is copied/adapted from R-files/SimulationSpecificSettings.R
 #####
 # Load previously saved simulation settings 
@@ -58,13 +60,20 @@ copy <- file.copy("Input-files/AppRate.txt",  path) # make sure the Model-files 
 # Change directory
 setwd('Model-files')
 # determine the number of cores that can be used (for parallel running)
-no_cores <- max(detectCores()-2,1) # you might want to adapt this and give a specific number of cores (e.g. when using a HPC)
+
+############ OPTION FOR TESTING ############
+no_cores <- 2
+MCruns <- min(MCruns, 2)
+############ END OPTION FOR TESTING ############
+
+# no_cores <- max(detectCores()-2,1) # you might want to adapt this and give a specific number of cores (e.g. when using a HPC)
 cl <- makeCluster(no_cores)
 registerDoParallel(cl)
 
 # Start control simulations in parallel with the given settings
 foreach(MC = 1:MCruns)  %dopar%
-  system(paste('./IBCgrassGUI', ModelVersion, GridSize, Tmax, InitDuration, PFTfileName, SeedInput, belowres, abres, abampl, tramp, graz, cut,
+  system(paste('./IBCgrassGUI', ModelVersion, GridSize, Tmax, InitDuration, PFTfileName, 
+              SeedInput, belowres, abres, abampl, tramp, graz, cut,
                week_start, HerbDuration, 0, EffectModel, scenario, MC, sep=" "), intern=T)
 stopCluster(cl)
 
@@ -118,67 +127,58 @@ if(HerbEff=="txt-file"){
                                    "HerbDuration", "tramp", "graz", "cut", "week_start"))  %dopar%
     {
       scenario <- 1 # for treatment simulations
-  
+
       # Generate PFTfile for each MC run
       PFTfile<-merge(PFTfile, PFTsensitivity, by="Species")
-      
       #make sure, all values are set to 0 (no affect)
       PFTfile[,25] <- 0
-      
       # set random values
       PFTfile[PFTfile$Sensitivity=="random",25] <- c(runif(nrow(PFTfile[PFTfile$Sensitivity=="random",]),  min = 0, max = 1))
-      
       # set full values
       PFTfile[PFTfile$Sensitivity=="full",25] <- c(rep(1, nrow(PFTfile[PFTfile$Sensitivity=="full",])))
-      
       # set high values
       PFTfile[PFTfile$Sensitivity=="high",25] <- c(runif(nrow(PFTfile[PFTfile$Sensitivity=="high",]),  min = 0.66, max = 1))
-      
       # set medium values
       PFTfile[PFTfile$Sensitivity=="medium",25] <- c(runif(nrow(PFTfile[PFTfile$Sensitivity=="medium",]),  min = 0.35, max = 0.65))
-      
       # set low values
       PFTfile[PFTfile$Sensitivity=="low",25] <- c(runif(nrow(PFTfile[PFTfile$Sensitivity=="low",]),  min = 0.1, max = 0.35))
-      
       # copy others (not affected PFTs get 0)
       PFTfile[PFTfile$Sensitivity=="not affected",25] <- c(rep(0, nrow(PFTfile[PFTfile$Sensitivity=="not affected",])))
-      
+
       # remove temp. column and prepare final PFT file for this repetition
       PFTfile<-PFTfile[,-ncol(PFTfile)]
       PFTfile <- cbind(PFTfile[,c(2,1)],PFTfile[,-c(1:2)])
-      
+
       #save PFT file
       write.table(PFTfile[,-ncol(PFTfile)], paste(unlist(strsplit(PFTfileName,".txt")), MC, ".txt", sep=""), row.names=F, quote=F, sep="\t")
-      
+
       # copy necessary files to Model-files folder
       path <- "Model-files/"
       copy <- file.copy(paste(unlist(strsplit(PFTfileName,".txt")), MC, ".txt", sep=""),  path)
       copy <- file.copy("HerbFact.txt",  path)
       copy <- file.copy("Input-files/AppRate.txt",  path)
-      
+
       # change directory
       setwd('Model-files')
-      
+
       # cmd call for running IBC
-      mycall<-paste('./IBCgrassGUI', ModelVersion, GridSize, Tmax, InitDuration, paste("./",unlist(strsplit(PFTfileName,".txt")), MC, ".txt", sep=""), 
+      mycall<-paste('./IBCgrassGUI', ModelVersion, GridSize, Tmax, InitDuration,
+       paste("./",unlist(strsplit(PFTfileName,".txt")), MC, ".txt", sep=""), 
                     SeedInput, belowres, abres, abampl, tramp, graz, cut, 
                     week_start, HerbDuration, 1, EffectModel, scenario, MC, sep=" ")
-      
+
       # start treatment run
       system(mycall, intern=TRUE)
-      
       # change working directory
       setwd('..')
-      
       # remove old files
       remove <- file.remove(paste("Model-files/", unlist(strsplit(PFTfileName,".txt")), MC, ".txt", sep=""))
       remove <- file.remove("Model-files/HerbFact.txt")
       remove <- file.remove("Model-files/AppRate.txt")
     }
-  
+
   # stop cluster for parallel processing
   stopCluster(cl)
-  
   #####
   # copy treatment
   #####
@@ -190,7 +190,7 @@ if(HerbEff=="txt-file"){
     copy <- file.copy(paste("Model-files/" ,file , sep="") ,  path)
     #  todo make sure that all files were copied!
     if (copy==T) file.remove(paste("Model-files/" ,file , sep="") )              
-  } 
+  }
   # GRD files
   file_list <- list.files(path = "Model-files/", pattern="Grd__*")
   for (file in file_list){
@@ -199,7 +199,7 @@ if(HerbEff=="txt-file"){
     #  todo make sure that all files were copied!
     if (copy==T) file.remove(paste("Model-files/" ,file , sep="") )              
   }
-  
+
   # Copy treamtent settings
   dir.create(paste("currentSimulation/HerbicideSettings", sep=""), recursive=TRUE)
   file_list <- list.files(pattern=paste(unlist(strsplit(PFTfileName,".txt")),"*",sep=""))
@@ -226,7 +226,7 @@ if(HerbEff=="dose-response"){
   no_cores <- max(detectCores()-2,1) # you might want to adapt this and give a specific number of cores (e.g. when using a HPC)
   cl <- makeCluster(no_cores)
   registerDoParallel(cl)
-  
+
   # run repetitions for treatment
   foreach(MC = 1:MCruns, .export=c("PFTfile", "PFTsensitivity", "PFTfileName", "EffectModel",
                                    "ModelVersion", "belowres", "abres", "abampl", "Tmax", "InitDuration", "GridSize", "SeedInput",
@@ -237,10 +237,8 @@ if(HerbEff=="dose-response"){
       # set sensitivities for each treatment repetition
       #####
       PFTfile<-merge(PFTfile, PFTsensitivity, by="Species")
-      
       # make sure, all values are set to 0 (no affect)
       PFTfile[,28:39] <- 0
-      
       # assign EC50 and slope values
       #####
       # biomass
@@ -254,7 +252,7 @@ if(HerbEff=="dose-response"){
         PFTfile[PFTfile$Sensitivity=="random",28] <- c(runif(nrow(PFTfile[PFTfile$Sensitivity=="random",]),  min = max(0,(DR[nb_data+1,2] - DR[nb_data+2,2])), max = max(0,(DR[nb_data+1,2] + DR[nb_data+2,2]))))
         # slope
         PFTfile[PFTfile$Sensitivity=="random",29] <- c(runif(nrow(PFTfile[PFTfile$Sensitivity=="random",]), min = max(0,(DR[nb_data+1,3] - DR[nb_data+2,3])), max = max(0,(DR[nb_data+1,3] + DR[nb_data+2,3]))))
-        
+
         # existing DR
         for (i in 1:nb_data){
           # EC50
@@ -262,7 +260,7 @@ if(HerbEff=="dose-response"){
           # slope
           PFTfile[PFTfile$Sensitivity==paste("dose response based on Spec ", i, sep=""),29] <- c(rep(DR[i,3],nrow(PFTfile[PFTfile$Sensitivity==paste("dose response based on Spec ", i, sep=""),])))
         } # end nb of test species
-        
+
         # not affected
         # EC50
         PFTfile[PFTfile$Sensitivity=="not affected",28] <- c(rep(0, nrow(PFTfile[PFTfile$Sensitivity=="not affected",])))
@@ -281,7 +279,7 @@ if(HerbEff=="dose-response"){
         PFTfile[PFTfile$Sensitivity=="random",30] <- c(runif(nrow(PFTfile[PFTfile$Sensitivity=="random",]),  min = max(0,(DR[nb_data+1,2] - DR[nb_data+2,2])), max = max(0,(DR[nb_data+1,2] + DR[nb_data+2,2]))))
         # slope
         PFTfile[PFTfile$Sensitivity=="random",31] <- c(runif(nrow(PFTfile[PFTfile$Sensitivity=="random",]), min = max(0,(DR[nb_data+1,3] - DR[nb_data+2,3])), max = max(0,(DR[nb_data+1,3] + DR[nb_data+2,3]))))
-        
+
         # existing DR
         for (i in 1:nb_data){
           # EC50
@@ -289,7 +287,7 @@ if(HerbEff=="dose-response"){
           # slope
           PFTfile[PFTfile$Sensitivity==paste("dose response based on Spec ", i, sep=""),31] <- c(rep(DR[i,3],nrow(PFTfile[PFTfile$Sensitivity==paste("dose response based on Spec ", i, sep=""),])))
         } # end nb of test species
-        
+
         # not affected
         # EC50
         PFTfile[PFTfile$Sensitivity=="not affected",30] <- c(rep(0, nrow(PFTfile[PFTfile$Sensitivity=="not affected",])))
@@ -308,7 +306,7 @@ if(HerbEff=="dose-response"){
         PFTfile[PFTfile$Sensitivity=="random",32] <- c(runif(nrow(PFTfile[PFTfile$Sensitivity=="random",]),  min = max(0,(DR[nb_data+1,2] - DR[nb_data+2,2])), max = max(0,(DR[nb_data+1,2] + DR[nb_data+2,2]))))
         # slope
         PFTfile[PFTfile$Sensitivity=="random",33] <- c(runif(nrow(PFTfile[PFTfile$Sensitivity=="random",]), min = max(0,(DR[nb_data+1,3] - DR[nb_data+2,3])), max = max(0,(DR[nb_data+1,3] + DR[nb_data+2,3]))))
-        
+
         # existing DR
         for (i in 1:nb_data){
           # EC50
@@ -316,7 +314,7 @@ if(HerbEff=="dose-response"){
           # slope
           PFTfile[PFTfile$Sensitivity==paste("dose response based on Spec ", i, sep=""),33] <- c(rep(DR[i,3],nrow(PFTfile[PFTfile$Sensitivity==paste("dose response based on Spec ", i, sep=""),])))
         } # end nb of test species
-        
+
         # not affected
         # EC50
         PFTfile[PFTfile$Sensitivity=="not affected",32] <- c(rep(0, nrow(PFTfile[PFTfile$Sensitivity=="not affected",])))
@@ -336,7 +334,7 @@ if(HerbEff=="dose-response"){
         PFTfile[PFTfile$Sensitivity=="random",34] <- c(runif(nrow(PFTfile[PFTfile$Sensitivity=="random",]),  min = max(0,(DR[nb_data+1,2] - DR[nb_data+2,2])), max = max(0,(DR[nb_data+1,2] + DR[nb_data+2,2]))))
         # slope
         PFTfile[PFTfile$Sensitivity=="random",35] <- c(runif(nrow(PFTfile[PFTfile$Sensitivity=="random",]), min = max(0,(DR[nb_data+1,3] - DR[nb_data+2,3])), max = max(0,(DR[nb_data+1,3] + DR[nb_data+2,3]))))
-        
+
         # existing DR
         for (i in 1:nb_data){
           # EC50
@@ -344,7 +342,7 @@ if(HerbEff=="dose-response"){
           # slope
           PFTfile[PFTfile$Sensitivity==paste("dose response based on Spec ", i, sep=""),35] <- c(rep(DR[i,3],nrow(PFTfile[PFTfile$Sensitivity==paste("dose response based on Spec ", i, sep=""),])))
         } # end nb of test species
-        
+
         # not affected
         # EC50
         PFTfile[PFTfile$Sensitivity=="not affected",34] <- c(rep(0, nrow(PFTfile[PFTfile$Sensitivity=="not affected",])))
@@ -363,7 +361,7 @@ if(HerbEff=="dose-response"){
         PFTfile[PFTfile$Sensitivity=="random",36] <- c(runif(nrow(PFTfile[PFTfile$Sensitivity=="random",]),  min = max(0,(DR[nb_data+1,2] - DR[nb_data+2,2])), max = max(0,(DR[nb_data+1,2] + DR[nb_data+2,2]))))
         # slope
         PFTfile[PFTfile$Sensitivity=="random",37] <- c(runif(nrow(PFTfile[PFTfile$Sensitivity=="random",]), min = max(0,(DR[nb_data+1,3] - DR[nb_data+2,3])), max = max(0,(DR[nb_data+1,3] + DR[nb_data+2,3]))))
-        
+
         # existing DR
         for (i in 1:nb_data){
           # EC50
@@ -371,7 +369,7 @@ if(HerbEff=="dose-response"){
           # slope
           PFTfile[PFTfile$Sensitivity==paste("dose response based on Spec ", i, sep=""),37] <- c(rep(DR[i,3],nrow(PFTfile[PFTfile$Sensitivity==paste("dose response based on Spec ", i, sep=""),])))
         } # end nb of test species
-        
+
         # not affected
         # EC50
         PFTfile[PFTfile$Sensitivity=="not affected",36] <- c(rep(0, nrow(PFTfile[PFTfile$Sensitivity=="not affected",])))
@@ -390,7 +388,7 @@ if(HerbEff=="dose-response"){
         PFTfile[PFTfile$Sensitivity=="random",38] <- c(runif(nrow(PFTfile[PFTfile$Sensitivity=="random",]),  min = max(0,(DR[nb_data+1,2] - DR[nb_data+2,2])), max = max(0,(DR[nb_data+1,2] + DR[nb_data+2,2]))))
         # slope
         PFTfile[PFTfile$Sensitivity=="random",39] <- c(runif(nrow(PFTfile[PFTfile$Sensitivity=="random",]), min = max(0,(DR[nb_data+1,3] - DR[nb_data+2,3])), max = max(0,(DR[nb_data+1,3] + DR[nb_data+2,3]))))
-        
+
         # existing DR
         for (i in 1:nb_data){
           # EC50
@@ -398,23 +396,23 @@ if(HerbEff=="dose-response"){
           # slope
           PFTfile[PFTfile$Sensitivity==paste("dose response based on Spec ", i, sep=""),39] <- c(rep(DR[i,3],nrow(PFTfile[PFTfile$Sensitivity==paste("dose response based on Spec ", i, sep=""),])))
         } # end nb of test species
-        
+
         # not affected
         # EC50
         PFTfile[PFTfile$Sensitivity=="not affected",38] <- c(rep(0, nrow(PFTfile[PFTfile$Sensitivity=="not affected",])))
         # slope
         PFTfile[PFTfile$Sensitivity=="not affected",39] <- c(rep(0, nrow(PFTfile[PFTfile$Sensitivity=="not affected",])))
       } # end seed number affected
-      
+
       #####
       # save the generated PFT file (specific for one treatment repetition)
       #####
       PFTfile<-PFTfile[,-ncol(PFTfile)]
       PFTfile <- cbind(PFTfile[,c(2,1)],PFTfile[,-c(1:2)])
-      
+
       #save PFT file
       write.table(PFTfile[,-ncol(PFTfile)], paste(unlist(strsplit(PFTfileName,".txt")), MC, ".txt", sep=""), row.names=F, quote=F, sep="\t")
-      
+
       #####
       # run simulations per app rate
       #####

@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y \
   libpcre3-dev libcurl4-openssl-dev libssl-dev libxml2-dev \
   libblas-dev liblapack-dev tcl-dev tk-dev \
   libgtk2.0-dev libatk1.0-dev libglib2.0-dev libgdk-pixbuf2.0-dev libpango1.0-dev \
+  gtk2-engines-pixmap gtk2-engines-murrine gnome-themes-extra adwaita-icon-theme \
   xvfb x11vnc websockify novnc xfce4 xterm dbus-x11 \
   libx11-dev libxt-dev libxmu-dev libsm-dev libice-dev \
   libxext-dev libxrender-dev libxfixes-dev libxft-dev \
@@ -49,6 +50,12 @@ RUN R -q -e 'remotes::install_version("foreach", version = "1.4.4", repos="http:
 RUN R -q -e 'remotes::install_version("ggthemes", version = "3.4.0", repos="http://cran.us.r-project.org", upgrade="never")'
 RUN R -q -e 'remotes::install_version("doParallel", version = "1.0.11", repos="http://cran.us.r-project.org", upgrade="never")'
 
+RUN R -q -e 'remotes::install_version("iterators", version = "1.0.10", repos="http://cran.us.r-project.org")'
+# RUN R -q -e 'remotes::install_version("RGtk2", version = "2.20.34", repos="http://cran.us.r-project.org")'
+# RUN R -q -e 'remotes::install_version("RGtk2Extras", version = "0.6.1", repos="http://cran.us.r-project.org")'
+# RUN R -q -e 'remotes::install_version("labeling", version = "0.3", repos="http://cran.us.r-project.org")'
+
+
 # Local Repo
 WORKDIR /opt/IBCgrassGUI
 COPY . /opt/IBCgrassGUI
@@ -57,9 +64,7 @@ COPY . /opt/IBCgrassGUI
 RUN R -q -e 'install.packages("Rlibraries/RGtk2_2.20.34.tar.gz", repos=NULL, type="source")'
 RUN R -q -e 'install.packages("Rlibraries/RGtk2Extras_0.6.1.tar.gz", repos=NULL, type="source")'
 RUN R -q -e 'install.packages("Rlibraries/labeling_0.3.tar.gz", repos=NULL, type="source")'
-# RUN R -q -e 'remotes::install_version("RGtk2", version = "2.20.34", repos="http://cran.us.r-project.org")'
-# RUN R -q -e 'remotes::install_version("RGtk2Extras", version = "0.6.1", repos="http://cran.us.r-project.org")'
-# RUN R -q -e 'remotes::install_version("labeling", version = "0.3", repos="http://cran.us.r-project.org")'
+
 
 # Convert CRLF->LF (évite $'\r') and force recompil C++ in the container
 RUN find /opt/IBCgrassGUI -type f \( -name "*.sh" -o -name "*.R" \) -print0 | xargs -0 dos2unix -k && \
