@@ -46,7 +46,7 @@ ec50_foo = function(dose_response, rate, slope){
     ec50 = (rate^slope/dose_response - rate^slope)^(1/slope)
     return(ec50)
 }
-build_dose_response <- function(n, stressor_type="low_unif"){
+build_dose_response <- function(n, stressor_type="low"){
     if(stressor_type=="high"){
         out_dist = runif(n, 0.25, 0.50)
     }
@@ -87,6 +87,21 @@ build_id_scenario <- function(be2th, stress_type, stressor){
     return(ids_100+ids_10+ids_1)
 }
 
+# Function to build HerbFact data frame for EFSA simulations
+build_HerbFact <- function(HerbDuration, stressor, stressor_type){
+    if(stressor_type=="low") level_vec = runif(HerbDuration, 0.01,0.25)
+    if(stressor_type=="medium") level_vec = pmax(rnorm(HerbDuration, 0.25, 0.05), 0)
+    if(stressor_type=="high") level_vec = runif(HerbDuration, 0.25,0.50)
+    no_vec = rep(0, HerbDuration)
+    data.frame(
+        Biomass=if("biomass" %in% stressor){level_vec}else{no_vec},
+        Mortality=if("survival" %in% stressor){level_vec}else{no_vec},
+        SeedlingBiomass=if("SEbiomass" %in% stressor){level_vec}else{no_vec},
+        Establishment=if("establishment" %in% stressor){level_vec}else{no_vec},
+        SeedSterility=if("sterility" %in% stressor){level_vec}else{no_vec},
+        SeedNumber=if("seednumber" %in% stressor){level_vec}else{no_vec}
+    )
+}
 
 # Function to build FieldEdge data frame for EFSA simulations using BE2TH database
 # df: data frame with plant traits
@@ -127,20 +142,20 @@ build_Fieldedge_BE2TH = function(dfBE2TH, group = "", stressor="NO", stressor_ty
         Resshare=df$Resshare,
         AllocSpacer=ifelse(df$Clonal==1, 0.05 , 0),
         mSpacer=ifelse(df$Clonal==1, 70, 0),
-        sens=0,
+        sens=1, # MUST BE 1 for sensitivity !!! SPECIFICALLY FOR TXT !!!
         allocroot=1,
         allocshoot=1,
-        EC50_biomass = ifelse("biomass" %in% stressor, rxp, 0),
+        EC50_biomass = if("biomass" %in% stressor){rxp}else{0},
         slope_biomass = 4,
-        EC50_SEbiomass = ifelse("SEbiomass" %in% stressor, rxp, 0),
+        EC50_SEbiomass = if("SEbiomass" %in% stressor){rxp}else{0},
         slope_SEbiomass = 4,
-        EC50_survival = ifelse("survival" %in% stressor, rxp, 0),
+        EC50_survival = if("survival" %in% stressor){rxp}else{0},
         slope_survival = 4,
-        EC50_establishment = ifelse("establishment" %in% stressor, rxp, 0),
+        EC50_establishment = if("establishment" %in% stressor){rxp}else{0},
         slope_establishment = 4,
-        EC50_sterility = ifelse("sterility" %in% stressor, rxp, 0),
+        EC50_sterility = if("sterility" %in% stressor){rxp}else{0},
         slope_sterility = 4,
-        EC50_seednumber = ifelse("seednumber" %in% stressor, rxp, 0),
+        EC50_seednumber = if("seednumber" %in% stressor){rxp}else{0},
         slope_seednumber = 4,
         FlowerWeek=16, # DEFAULT IN PUBLICATIONS
         DispWeek=20, # IS = FlowerWeek+4

@@ -8,9 +8,9 @@ STRESSOR_TYPE = c("low", "high", "medium")
 STRESSORS = c(no="NO", pb="biomass", sb="SEbiomass", sv="survival", es="establishment", st="sterility", ns="seednumber")
 
 ############################## LOAD ARGUMENTS
-# group = "STE_I1"
-# stressor_type = "low"
-# stressor="NO"
+group = "STE_I1"
+stressor_type = "high"
+stressor="survival"
 
 args <- commandArgs(trailingOnly = TRUE)
 
@@ -31,9 +31,9 @@ if(stressor=="NO"){
 }
 
 ModelVersion <- 3
-CellNum <- 173
-Tmax <- if(CONTROL) 50 else 100
-InitDuration <- 35
+CellNum <- 50 # 173
+Tmax <- 9 # if(CONTROL) 50 else 100
+InitDuration <- 3 # 35
 NamePftFile <- "Fieldedge.txt"
 SeedInput <- 10
 belowres <- 90
@@ -41,20 +41,19 @@ abres <- 100
 abampl <- 0
 tramp <- 0.1
 graz <- 0
-cut <- 1
+cut <- 0 # or 1,2,3 ...
 week_start <- 1
-HerbDuration <- 30
+HerbDuration <- 10
 HerbEffectType <- if(CONTROL) 0 else 1
-EffectModel <- 2
+EffectModel <- if(CONTROL) 0 else 2
 scenario <- idScenario
 MC <- 0
-nMC <- 10
-
+nMC <- 5
 
 # SAVE CONFIGURATION AND COPY INPUT FILES TO OUTPUT FOLDER
-ID_OUT = formatC(sample(1:1e8,1), width = 9, format = "d", flag = "0")
-PATH_OUTPUT = paste0("sim_", group,"_", stressor, "_", stressor_type, "_", ID_OUT, "/")
-dir.create(PATH_OUTPUT)
+# ID_OUT = formatC(sample(1:1e8,1), width = 9, format = "d", flag = "0")
+# PATH_OUTPUT = paste0("sim_", group,"_", stressor, "_", stressor_type, "_", ID_OUT, "/")
+# dir.create(PATH_OUTPUT)
 
 # Create Fieldedge.txt for EFSA simulations
 df_fieldedge <- build_Fieldedge_BE2TH(
@@ -62,14 +61,15 @@ df_fieldedge <- build_Fieldedge_BE2TH(
     stressor=stressor,
     stressor_type=stressor_type)
 write.table(df_fieldedge, file=paste0(PATH, "Fieldedge.txt"), sep="\t", row.names=FALSE, quote=FALSE)
-write.table(df_fieldedge, file=paste0(PATH_OUTPUT, "Fieldedge.txt"), sep="\t", row.names=FALSE, quote=FALSE)
+# write.table(df_fieldedge, file=paste0(PATH_OUTPUT, "Fieldedge.txt"), sep="\t", row.names=FALSE, quote=FALSE)
 
 # Create AppRate.txt for control simulation
 df_AppRate <- build_AppRate(application_rate=HerbEffectType, herbicide_duration=HerbDuration)
 write.table(df_AppRate, paste0(PATH,"AppRate.txt"), col.names=FALSE, row.names=FALSE, sep="\t")
-write.table(df_AppRate, paste0(PATH_OUTPUT,"AppRate.txt"), col.names=FALSE, row.names=FALSE, sep="\t")
+# write.table(df_AppRate, paste0(PATH_OUTPUT,"AppRate.txt"), col.names=FALSE, row.names=FALSE, sep="\t")
 
-save_configuration(filepath = paste0(PATH_OUTPUT, "simulation_config"),
+# save_configuration(filepath = paste0(PATH_OUTPUT, "simulation_config"),
+save_configuration(filepath = paste0(PATH, "simulation_config"),
   ModelVersion, CellNum, Tmax, InitDuration, NamePftFile,
   SeedInput, belowres, abres, abampl, tramp, graz, cut,
   week_start, HerbDuration, HerbEffectType,
@@ -80,6 +80,19 @@ save_configuration(filepath = paste0(PATH_OUTPUT, "simulation_config"),
 # no_cores <- max(detectCores()-2, 1)
 # cl <- makeCluster(no_cores)
 # registerDoParallel(cl)
+setwd('Model-files')
+CellNum <- 25
+Tmax <- 9
+InitDuration <- 3
+week_start <- 1
+MC <- 1
+mycall <- paste('./IBCgrassGUI', ModelVersion, CellNum, Tmax, InitDuration,
+                NamePftFile, SeedInput, belowres, abres, abampl, tramp, graz, cut,
+                week_start, HerbDuration, HerbEffectType, EffectModel, scenario, MC, sep=" ")
+system(mycall, intern=TRUE)
+setwd('..')
+
+
 
 print("Starting herbicide simulations (dose-response)...")
 # Run repetitions for treatment
@@ -101,24 +114,24 @@ for(MC in 1:nMC){
 # }
 # stopCluster(cl)
 setwd('..')
-
-# Clean up the temporary PFT file for the run
-Grd_path = list.files(path = PATH, pattern = "^Grd_")
-Pt_path = list.files(path = PATH, pattern = "^Pt_")
-for(f in Grd_path){
-  if(file.exists(f)){
-    file.copy(paste0(PATH, Grd_path), paste0(PATH_OUTPUT, Grd_path))
-    file.remove(paste0(PATH, Grd_path))
-  }
-}
-for(f in Pt_path){
-  if(file.exists(f)){
-    file.copy(paste0(PATH, f), paste0(PATH_OUTPUT, f))
-    file.remove(paste0(PATH, f))
-  }
-}
-file.remove(paste0(PATH, "Fieldedge.txt"))
-file.remove(paste0(PATH, "AppRate.txt"))
+# 
+# # Clean up the temporary PFT file for the run
+# Grd_path = list.files(path = PATH, pattern = "^Grd_")
+# Pt_path = list.files(path = PATH, pattern = "^Pt_")
+# for(f in Grd_path){
+#   if(file.exists(f)){
+#     file.copy(paste0(PATH, Grd_path), paste0(PATH_OUTPUT, Grd_path))
+#     file.remove(paste0(PATH, Grd_path))
+#   }
+# }
+# for(f in Pt_path){
+#   if(file.exists(f)){
+#     file.copy(paste0(PATH, f), paste0(PATH_OUTPUT, f))
+#     file.remove(paste0(PATH, f))
+#   }
+# }
+# file.remove(paste0(PATH, "Fieldedge.txt"))
+# file.remove(paste0(PATH, "AppRate.txt"))
 
 print("Herbicide simulations finished.")
 print(paste("Output files (Pt_*.txt, Grd_*.txt) are located in the Model-files/ directory."))
