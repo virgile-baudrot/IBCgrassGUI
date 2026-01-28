@@ -5,6 +5,7 @@ dfBE2TH <- read.csv("Input-EFSA/BE2TH_cleaned.csv", header=TRUE, sep=",", string
 PATH = "Model-files/"
 grBE2TH = c("STE_I1", "BLS_I1", "ALP_I1", "ATL_I1", "BOR_I1", "CON_I1", "PAN_I1", "MED_I1", "MAC_I1")
 STRESSOR_TYPE = c("low", "high", "medium")
+STRESSOR_TYPE = c("z01", "z02", "z03", "z04", "z05")
 STRESSORS = c(no="NO", pb="biomass", sb="SEbiomass", sv="survival", es="establishment", st="sterility", ns="seednumber")
 
 ############################## LOAD ARGUMENTS
@@ -32,8 +33,8 @@ if(stressor=="NO"){
 
 ModelVersion <- 3
 CellNum <- 50 # 173
-Tmax <- 9 # if(CONTROL) 50 else 100
-InitDuration <- 3 # 35
+Tmax <- 50 # if(CONTROL) 9 or 50 else 100
+InitDuration <- 35 # 35 or 3
 NamePftFile <- "Fieldedge.txt"
 SeedInput <- 10
 belowres <- 90
@@ -60,9 +61,12 @@ df_fieldedge <- build_Fieldedge_BE2TH(
     dfBE2TH, group = group,
     stressor=stressor,
     stressor_type=stressor_type)
-# ################ REDUCE
-# df_fieldedge <- df_fieldedge[1:3, ]
-# ######################
+#  -------------------------------------------------
+# REDUCE AT 20 SPECIES
+# --------------------------------------------------
+nselect = sample(1:nrow(df_fieldedge), 20)
+df_fieldedge <- df_fieldedge[nselect, ]
+# --------------------------------------------------
 write.table(df_fieldedge, file=paste0(PATH, "Fieldedge.txt"), sep="\t", row.names=FALSE, quote=FALSE)
 # write.table(df_fieldedge, file=paste0(PATH_OUTPUT, "Fieldedge.txt"), sep="\t", row.names=FALSE, quote=FALSE)
 
@@ -82,22 +86,6 @@ save_configuration(filepath = paste0(PATH, "simulation_config"),
                    week_start, HerbDuration, HerbEffectType,
                    EffectModel, scenario, MC, nMC
 )
-
-## Setup for parallel processing
-# no_cores <- max(detectCores()-2, 1)
-# cl <- makeCluster(no_cores)
-# registerDoParallel(cl)
-# setwd('Model-files')
-# CellNum <- 4
-# Tmax <- 2
-# InitDuration <- 1
-# EffectModel <- 0
-# MC <- 2
-# mycall <- paste('./IBCgrassGUI', ModelVersion, CellNum, Tmax, InitDuration,
-#                 NamePftFile, SeedInput, belowres, abres, abampl, tramp, graz, cut,
-#                 week_start, HerbDuration, HerbEffectType, EffectModel, scenario, MC, sep=" ")
-# system(mycall, intern=TRUE)
-# setwd('..')
 
 print("Starting herbicide simulations (dose-response)...")
 # Run repetitions for treatment

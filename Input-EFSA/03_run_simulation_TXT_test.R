@@ -5,12 +5,13 @@ dfBE2TH <- read.csv("Input-EFSA/BE2TH_cleaned.csv", header=TRUE, sep=",", string
 PATH = "Model-files/"
 grBE2TH = c("STE_I1", "BLS_I1", "ALP_I1", "ATL_I1", "BOR_I1", "CON_I1", "PAN_I1", "MED_I1", "MAC_I1")
 STRESSOR_TYPE = c("low", "high", "medium")
+STRESSOR_TYPE = c("z01", "z02", "z03", "z04", "z05")
 STRESSORS = c(no="NO", pb="biomass", sb="SEbiomass", sv="survival", es="establishment", st="sterility", ns="seednumber")
 
 ############################## LOAD ARGUMENTS
 group = "STE_I1"
-stressor_type = "low"
-stressor="NO"
+stressor_type = "z01"
+stressor="biomass"
 
 # args <- commandArgs(trailingOnly = TRUE)
 # 
@@ -60,9 +61,12 @@ df_fieldedge <- build_Fieldedge_BE2TH(
     dfBE2TH, group = group,
     stressor=stressor,
     stressor_type=stressor_type)
-# ################ REDUCE
-# df_fieldedge <- df_fieldedge[1:3, ]
-# ######################
+#  -------------------------------------------------
+# REDUCE AT 20 SPECIES
+# --------------------------------------------------
+nselect = sample(1:nrow(df_fieldedge), 20)
+df_fieldedge <- df_fieldedge[nselect, ]
+# --------------------------------------------------
 write.table(df_fieldedge, file=paste0(PATH, "Fieldedge.txt"), sep="\t", row.names=FALSE, quote=FALSE)
 # write.table(df_fieldedge, file=paste0(PATH_OUTPUT, "Fieldedge.txt"), sep="\t", row.names=FALSE, quote=FALSE)
 

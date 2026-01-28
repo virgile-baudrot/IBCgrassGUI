@@ -47,18 +47,23 @@ ec50_foo = function(dose_response, rate, slope){
     return(ec50)
 }
 build_dose_response <- function(n, stressor_type="low"){
+  if(stressor_type %in% c("low", "high", "medium")) {
     if(stressor_type=="high"){
-        out_dist = runif(n, 0.25, 0.50)
+      out_dist = runif(n, 0.25, 0.50)
     }
     if(stressor_type=="low"){
-        out_dist = runif(n, 0.01, 0.25)
+      out_dist = runif(n, 0.01, 0.25)
     }
     if(stressor_type=="medium"){
-        out_dist = pmax(rnorm(n, 0.25, 0.05), 0)
+      out_dist = pmax(rnorm(n, 0.25, 0.05), 0)
     }
     rxp = ec50_foo(out_dist,1,4)
-    return(rxp)
+  } else{
+    rxp = rep(0, n)
+  }
+  return(rxp)
 }
+
 build_id_scenario <- function(be2th, stress_type, stressor){
     ids_100 = 100*switch(be2th,
                     "STE_I1"=1,
@@ -74,7 +79,12 @@ build_id_scenario <- function(be2th, stress_type, stressor){
     ids_10 = 10*switch(stress_type,
                    "low"=1,
                    "high"=2,
-                   "medium"=3
+                   "medium"=3,
+                   "z01" = 4,
+                   "z02" = 5,
+                   "z03" = 6,
+                   "z04" = 7,
+                   "z05" = 8,
     )
     ids_1 = switch(stressor,
         "NO"=0,
@@ -87,11 +97,27 @@ build_id_scenario <- function(be2th, stress_type, stressor){
     return(ids_100+ids_10+ids_1)
 }
 
+mu_lognorm <- function(z, sdlog=1){
+  log(z) - 1.645 * sdlog
+}
+
 # Function to build HerbFact data frame for EFSA simulations
 build_HerbFact <- function(HerbDuration, stressor, stressor_type){
+  
+    level_vec = rep(0, HerbDuration)
+  
     if(stressor_type=="low") level_vec = runif(HerbDuration, 0.01,0.25)
     if(stressor_type=="medium") level_vec = pmax(rnorm(HerbDuration, 0.25, 0.05), 0)
     if(stressor_type=="high") level_vec = runif(HerbDuration, 0.25,0.50)
+    
+    if(stressor_type=="z01") level_vec = rlnorm(HerbDuration, meanlog = mu_lognorm(0.1), sdlog = 1)
+    if(stressor_type=="z02") level_vec = rlnorm(HerbDuration, meanlog = mu_lognorm(0.2), sdlog = 1)
+    if(stressor_type=="z03") level_vec = rlnorm(HerbDuration, meanlog = mu_lognorm(0.3), sdlog = 1)
+    if(stressor_type=="z04") level_vec = rlnorm(HerbDuration, meanlog = mu_lognorm(0.4), sdlog = 1)
+    if(stressor_type=="z05") level_vec = rlnorm(HerbDuration, meanlog = mu_lognorm(0.5), sdlog = 1)
+    
+    level_vec = pmin(level_vec, 1)
+    
     no_vec = rep(0, HerbDuration)
     data.frame(
         Biomass=if("biomass" %in% stressor){level_vec}else{no_vec},
@@ -111,6 +137,7 @@ build_Fieldedge_BE2TH = function(dfBE2TH, group = "", stressor="NO", stressor_ty
     df = dfBE2TH[dfBE2TH[[group]]==1,]
     n = nrow(df)
     rxp = build_dose_response(n, stressor_type)
+    rxp = pmin(rxp, 1)
     
     SPECIES = gsub(" ", "_", df$Species)
     SPECIES = gsub("\\.", "", SPECIES)

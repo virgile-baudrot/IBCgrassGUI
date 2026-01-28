@@ -1,4 +1,4 @@
-myIP='163.172.138.51'
+myIP='163.172.191.92'
 myIP='51.158.75.139'
 ssh root@$myIP
 
@@ -78,9 +78,11 @@ g++ -static -static-libgcc -static-libstdc++ -std=c++11 -O2 \
 ########## COPY SOME FILES FROM REMOTE ##############
 rsync -av --ignore-existing root@$myIP:/home/IBCgrass/runs2/* output-EFSA/
 
-rsync -av --ignore-existing root@$myIP:/home/IBCgrass/Model-files/Pt* output-EFSA/
-rsync -av --ignore-existing root@$myIP:/home/IBCgrass/Model-files/Grd* output-EFSA/
 rsync -av --ignore-existing root@$myIP:/home/IBCgrass/sim* output-EFSA/
+rsync -av --ignore-existing root@$myIP:/home/IBCgrass/* output-EFSA/
+
+rsync -av --ignore-existing root@$myIP:/home/IBCgrass/runs* output-EFSA/
+
 #######################################################
 
 ##################### FOR LOOP #########################
@@ -88,7 +90,7 @@ grBE2TH=("STE_I1" "BLS_I1" "ALP_I1" "ATL_I1" "BOR_I1" "CON_I1" "PAN_I1" "MED_I1"
 STRESSORS=("NO" "biomass" "SEbiomass" "survival" "establishment" "sterility" "seednumber")
 
 
-grBE2TH=("MAC_I1" "MED_I1" "PAN_I1" "CON_I1" "BOR_I1" "ATL_I1" "ALP_I1" "BLS_I1")
+grBE2TH=("STE_I1 ""MAC_I1" "MED_I1" "PAN_I1" "CON_I1" "BOR_I1" "ATL_I1" "ALP_I1" "BLS_I1")
 STRESSOR_TYPE=("low" "medium" "high")
 STRESSORS=("biomass" "SEbiomass" "survival" "establishment" "sterility" "seednumber")
 ## A SINGLE SCRIPT EXAMPLE
@@ -113,9 +115,13 @@ grBE2TH=("STE_I1" "BLS_I1" "ALP_I1" "ATL_I1" "BOR_I1" "CON_I1" "PAN_I1" "MED_I1"
 STRESSOR_TYPE=("low" "medium" "high")
 STRESSORS=("NO" "biomass" "SEbiomass" "survival" "establishment" "sterility" "seednumber")
 
+
 ##################### START PARALLEL LOOP #########################
-nohup parallel -j 32 '
-  dir="runs/{1}_{2}_{3}"
+# ------------
+# CONTROL
+# ------------
+nohup parallel -j 8 '
+  dir="runs_control_r20/{1}_{2}_{3}"
 
   mkdir -p "$dir"
 
@@ -124,19 +130,44 @@ nohup parallel -j 32 '
 
   cd "$dir"
 
-  Rscript Input-EFSA/03_run_simulation.R {1} {2} {3}
+  Rscript Input-EFSA/03_run_simulation_TXT.R {1} {2} {3}
 ' ::: \
   STE_I1 BLS_I1 ALP_I1 ATL_I1 BOR_I1 CON_I1 PAN_I1 MED_I1 MAC_I1 \
-  # MAC_I1 MED_I1 PAN_I1 CON_I1 BOR_I1 ATL_I1 ALP_I1 BLS_I1 \
   ::: \
-  low medium high \
+  low \
   ::: \
-  # biomass SEbiomass survival establishment sterility seednumber \
-  NO biomass SEbiomass survival establishment sterility seednumber \
-  > master.log 2>&1 &
+  NO \
+  > masterC.log 2>&1 &
+  
+
+# ------------
+# EFFECT
+# ------------
+nohup parallel -j 16 '
+  dir="runs_effect_r20/{1}_{2}_{3}"
+
+  mkdir -p "$dir"
+
+  cp -r Input-EFSA "$dir"/
+  cp -r Model-files "$dir"/Model-files
+
+  cd "$dir"
+
+  Rscript Input-EFSA/03_run_simulation_TXT.R {1} {2} {3}
+' ::: \
+  ALP_I1 ATL_I1 BLS_I1 BOR_I1 CON_I1 MAC_I1 MED_I1 PAN_I1 STE_I1  \
+  ::: \
+  z01 z02 z03 z04 z05 \
+  ::: \
+  biomass SEbiomass survival establishment sterility seednumber \
+  > masterE.log 2>&1 &
 ##################### END PARALLEL LOOP #########################
 
 
 
 ps aux | grep Rscript
 kill <PID>
+
+
+
+
