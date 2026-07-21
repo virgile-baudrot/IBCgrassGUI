@@ -3,9 +3,19 @@ build_DF <- function(ls_files){
   df = lapply(seq_along(ls_files), function(id){
     d = ls_files[[id]]
     combined_df <- lapply(seq_along(d), function(i) {
-      df <- read.table(d[[i]], sep = "\t", header = TRUE)
-      df$simulations = i
-      return(df)
+      df <- tryCatch({
+        read.table(d[[i]], sep = "\t", header = TRUE)
+      }, error = function(e) {
+        warning(paste("Erreur de lecture sur le fichier :", d[[i]]))
+        return(NULL)
+      })
+      
+      if (!is.null(df)) {
+        df$simulations = i
+        return(df)
+      } else {
+        return(NULL)
+      }
     }) %>%
       dplyr::bind_rows()
     combined_df$modality = sim_repo[[id]]
@@ -373,4 +383,194 @@ p_ind_mean <- function(Grd_DF_burnin_sum, item){
       facet_grid(~ stressor)
   }
   return(p)
+}
+
+
+# ----------------------
+# POP
+# ----------------------
+
+pop_effect_prepare <- function(Grd_DF, QUANT=0.5, ratio=TRUE, rollmean=FALSE, rollmean_k=30){
+  Grd_DF_z00 = Grd_DF |>
+    dplyr::filter(stressor_level == "z00") |>
+    group_by(Time, community, stressor) |>
+    dplyr::mutate(
+      NInd_control_median = median(NInd, na.rm=TRUE),
+      totMass_control_median = median(totMass, na.rm=TRUE),
+      abovemass_control_median = median(abovemass, na.rm=TRUE),
+      NPFT_control_median = median(NPFT, na.rm=TRUE),
+      shannon_control_median = median(shannon, na.rm=TRUE)
+    ) |>
+    dplyr::mutate(
+      stressor_level=NULL,
+      NInd=NULL,
+      totMass=NULL,
+      abovemass=NULL,
+      NPFT=NULL,
+      shannon=NULL
+    )
+  
+  Grd_DF_merge = dplyr::left_join(Grd_DF, Grd_DF_z00, by=c("Time", "community", "stressor"))
+  
+  if(ratio){
+    Grd_DF_diff = Grd_DF_merge |>
+      dplyr::mutate(
+        Nind_diff = NInd / NInd_control_median,
+        totMass_diff= totMass / totMass_control_median,
+        abovemass_diff= abovemass / abovemass_control_median,
+        NPFT_diff = NPFT / NPFT_control_median,
+        shannon_diff = shannon / shannon_control_median
+      )
+  } else{
+    Grd_DF_diff = Grd_DF_merge |>
+      dplyr::mutate(
+        Nind_diff = NInd - NInd_control_median,
+        totMass_diff= totMass - totMass_control_median,
+        abovemass_diff= abovemass - abovemass_control_median,
+        NPFT_diff = NPFT - NPFT_control_median,
+        shannon_diff = shannon - shannon_control_median
+      )
+  }
+  
+  if(length(QUANT) == 1){
+    Grd_DF_diff_sum <- Grd_DF_diff |>
+      dplyr::group_by(Time, community, stressor, stressor_level) |>
+      dplyr::summarise(
+        q_NInd_diff = quantile(Nind_diff, QUANT, na.rm=TRUE),
+        q_totMass_diff = quantile(totMass_diff, QUANT, na.rm=TRUE),
+        q_abovemass_diff = quantile(abovemass_diff, QUANT, na.rm=TRUE),
+        q_NPFT_diff = quantile(NPFT_diff, QUANT, na.rm=TRUE),
+        q_shannon_diff = quantile(shannon_diff, QUANT, na.rm=TRUE)
+      )
+  } else{
+    Grd_DF_diff_sum <- Grd_DF_diff |>
+      dplyr::group_by(Time, community, stressor, stressor_level) |>
+      dplyr::summarise(
+        q_NInd_diff = quantile(Nind_diff, QUANT[1], na.rm=TRUE) - quantile(Nind_diff, QUANT[2], na.rm=TRUE),
+        q_totMass_diff = quantile(totMass_diff, QUANT[1], na.rm=TRUE) - quantile(totMass_diff, QUANT[2], na.rm=TRUE),
+        q_abovemass_diff = quantile(abovemass_diff, QUANT[1], na.rm=TRUE) - quantile(abovemass_diff, QUANT[2], na.rm=TRUE),
+        q_NPFT_diff = quantile(NPFT_diff, QUANT[1], na.rm=TRUE) - quantile(NPFT_diff, QUANT[2], na.rm=TRUE),
+        q_shannon_diff = quantile(shannon_diff, QUANT[1], na.rm=TRUE) - quantile(shannon_diff, QUANT[2], na.rm=TRUE)
+      )
+  }
+  
+  if(rollmean){
+    Grd_DF_diff_sum <- Grd_DF_diff_sum |>
+      dplyr::group_by(community, stressor, stressor_level) |>
+      dplyr::mutate(
+        q_NInd_diff = zoo::rollmean(q_NInd_diff, k = rollmean_k, fill = NA, align = "right"),
+        q_totMass_diff = zoo::rollmean(q_totMass_diff, k = rollmean_k, fill = NA, align = "right"),
+        q_abovemass_diff = zoo::rollmean(q_abovemass_diff, k = rollmean_k, fill = NA, align = "right"),
+        q_NPFT_diff = zoo::rollmean(q_NPFT_diff, k = rollmean_k, fill = NA, align = "right"),
+        q_shannon_diff = zoo::rollmean(q_shannon_diff, k = rollmean_k, fill = NA, align = "right")
+      )
+  }
+  
+  return(Grd_DF_diff_sum)
+}
+
+plot_eff_001 <- function(Grd_DF_diff_sum){
+  ggplot(data=Grd_DF_diff_sum) +
+    theme_minimal() +
+    theme(legend.position = "bottom") +
+    labs(x = "Time (years)", y = "Ratio Effect/Control Number of Individuals") +
+    scale_color_manual(
+      name="Stressor level:",
+      values=c("black", "#44C714", "#C7C714", "#C75314", "#C71414", "#7314C7")
+    )+
+    geom_line(
+      aes(x=Time/30, y = q_NInd_diff, color=stressor_level),
+      alpha=0.7) +
+    facet_grid(stressor~.)
+}
+
+plot_eff_002 <- function(Grd_DF_diff_sum){
+  ggplot(data=Grd_DF_diff_sum) +
+    theme_minimal() +
+    theme(legend.position = "bottom") +
+    labs(x = "Time (years)", y = "Ratio Effect/Control Total Mass (g)") +
+    #scale_x_continuous(limits=c(5,NA)) +
+    scale_color_manual(
+      name="Stressor level:",
+      values=c("black", "#44C714", "#C7C714", "#C75314", "#C71414", "#7314C7")
+    )+
+    geom_line(
+      aes(x=Time/30, y = q_totMass_diff, color=stressor_level),
+      alpha=0.7) +
+    facet_grid(stressor~.)
+}
+
+plot_eff_003 <- function(Grd_DF_diff_sum){
+  ggplot(data=Grd_DF_diff_sum) +
+    theme_minimal() +
+    theme(legend.position = "bottom") +
+    labs(x = "Time (years)", y = "Ratio Effect/Control Above Mass (g)") +
+    scale_color_manual(
+      name="Stressor level:",
+      values=c("black", "#44C714", "#C7C714", "#C75314", "#C71414", "#7314C7")
+    )+
+    geom_line(
+      aes(x=Time/30, y = q_abovemass_diff, color=stressor_level),
+      alpha=0.7) +
+    facet_grid(stressor~.)
+}
+
+plot_eff_004 <- function(Grd_DF_diff_sum){
+  ggplot(data=Grd_DF_diff_sum) +
+    theme_minimal() +
+    theme(legend.position = "bottom") +
+    labs(x = "Time (years)", y = "Ratio Effect/Control Above Mass (g)") +
+    scale_color_manual(
+      name="Stressor level:",
+      values=c("black", "#44C714", "#C7C714", "#C75314", "#C71414", "#7314C7")
+    )+
+    geom_line(
+      aes(x=Time/30, y = q_abovemass_diff, color=stressor_level),
+      alpha=0.7) +
+    facet_grid(stressor~stressor_level)
+}
+
+plot_eff_005 <- function(Grd_DF_diff_sum){
+  ggplot(data=Grd_DF_diff_sum) +
+    theme_minimal() +
+    theme(legend.position = "bottom") +
+    labs(x = "Time (years)", y = "Ratio Effect/Control Number PTF") +
+    scale_color_manual(
+      name="Stressor level:",
+      values=c("black", "#44C714", "#C7C714", "#C75314", "#C71414", "#7314C7")
+    )+
+    geom_line(
+      aes(x=Time/30, y = q_NPFT_diff, color=stressor_level),
+      alpha=0.7) +
+    facet_grid(stressor~.)
+}
+
+plot_eff_006 <- function(Grd_DF_diff_sum){
+  ggplot(data=Grd_DF_diff_sum) +
+    theme_minimal() +
+    theme(legend.position = "bottom") +
+    labs(x = "Time (years)", y = "Ratio Effect/Control Shannon diveristy") +
+    scale_color_manual(
+      name="Stressor level:",
+      values=c("black", "#44C714", "#C7C714", "#C75314", "#C71414", "#7314C7")
+    )+
+    geom_line(
+      aes(x=Time/30, y = q_shannon_diff, color=stressor_level),
+      alpha=0.7) +
+    facet_grid(stressor~.)
+}
+
+plot_eff_006b <- function(Grd_DF_diff_sum){
+  ggplot(data=Grd_DF_diff_sum) +
+    theme_minimal() +
+    theme(legend.position = "bottom") +
+    labs(x = "Time (years)", y = "Ratio Effect/Control Shannon diveristy") +
+    scale_color_manual(
+      name="Stressor level:",
+      values=c("black", "#44C714", "#C7C714", "#C75314", "#C71414", "#7314C7")
+    )+
+    geom_line(
+      aes(x=Time/30, y = q_shannon_diff, color=stressor_level),
+      alpha=0.7) +
+    facet_grid(stressor~stressor_level)
 }

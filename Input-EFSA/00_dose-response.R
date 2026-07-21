@@ -10,11 +10,17 @@ ec50_foo = function(dose_response, rate, slope){
     return(ec50)
 }
 
+mu_lognorm <- function(z, sdlog=1){
+  log(z) - 1.645 * sdlog
+}
+
+
+
 # PLOTTING DOSE_RESPONSE
 application_rate = seq(0, 2, by=0.01)
 grids_par = expand.grid(
     EC50 = seq(0, 4.1, by=0.5),
-    slope = c(1,4,7)
+    slope = 4
 )
 
 ls <- apply(grids_par, 1, function(p){
@@ -26,26 +32,20 @@ ls <- apply(grids_par, 1, function(p){
     )
 })
 do.call("rbind", ls) -> dfDR
-ggplot(dfDR, aes(x = rate, y = response, group = EC50, color = EC50)) +
-    theme_minimal() +
-    labs(
-        title = "Dose-Response Curve",
-        x = "Application Rate",
-        y = "Response"
-    ) +
-    geom_line() +
-    facet_grid(
-        . ~ slope,
-        labeller = labeller(
-            slope = function(s) paste("slope:", s)
-        )
-    )
+
+
+ggplot(dfDR, aes(x = rate, y = response, color = as.factor(EC50))) +
+  geom_line() +
+  theme_minimal() +
+  labs(title = "Dose-Response Curve, slope=4", x = "Application Rate", y = "Response") +
+  geom_vline(xintercept = 1, linetype=2, color="red") +
+  scale_color_brewer(name="EC50", palette = "RdYlGn")
 
 # PLOTTING RESPONSE WITH FIXED APPLICATION RATE
 application_rate_fixed = 1
 grids_par = expand.grid(
     EC50 = seq(0, 4, by=0.01),
-    slope = c(1,4,7)
+    slope = 4
 )
 ls <- apply(grids_par, 1, function(p){
     data.frame(
@@ -57,24 +57,39 @@ ls <- apply(grids_par, 1, function(p){
 })
 dfEC50 <- do.call("rbind", ls)
 
-
-ggplot(dfEC50, aes(x = EC50, y = response, group=slope, color=as.factor(slope))) +
+ggplot(dfEC50, aes(x = EC50, y = response, group=slope,)) +
     theme_minimal() +
-    labs(title = "Response ~ EC50 - with Fixed Application Rate = 1",
-        x = "EC50",
-        y = "Response" ) +
-    scale_color_manual(
-        name="slope",
-        values=c("#115566", "#665511", "#116655")) +
-    geom_line()
+    labs(title = "Response ~ EC50 - Fixed Application Rate=1 & Slope=4",
+        x = "EC50",  y = "Response" ) +
+    geom_line( color="#115566")
 
 
-y = dose_response(1, runif(1e3,1.5,4), 4)
-plot(hist(y))
+effect_dist = lapply(seq(0.1,0.5, by=0.1), function(p){
+  data.frame(
+    p=p,
+    # rdist=rlnorm(1e5, meanlog = mu_lognorm(p), sdlog = 1)
+    pdist=seq(0.01,0.99, by=0.01),
+    qdist=qlnorm(seq(0.01,0.99, by=0.01), meanlog = mu_lognorm(p), sdlog = 1)
+  )
+})
+df_effect_dist = do.call("rbind", effect_dist)
 
-out_dist = runif(1e4,0.25,0.50)
-out_dist = runif(1e4,0.01,0.25)
-out_dist = rnorm(1e4,0.25,0.05)
+ggplot(data=df_effect_dist) +
+  theme_minimal() +
+  labs(title="Species Sensitivity Distribution",
+       x="Species Distribution", y="Effect Level") +
+  scale_color_manual(
+    name="Quantile 95",
+    values=c("#114411", "#115599", "#995599", "#995511", "#BB1111")
+  ) +
+  geom_line(aes(x=pdist, y=qdist, color=as.factor(p)), alpha=0.7) +
+  geom_hline(
+    yintercept = c(0.1, 0.2, 0.3, 0.4, 0.5),
+    color=c("#114411", "#115599", "#995599", "#995511", "#BB1111"),
+    linetype=4
+  )
+
+
 
 x = ec50_foo(out_dist,1,4)
 y = dose_response(1, x, 4)
