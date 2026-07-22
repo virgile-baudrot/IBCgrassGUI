@@ -19,7 +19,7 @@ run_ibcgrass <- function(species_data, landscape_config, scenario_setup, scenari
   EffectModel    <- 0 
   
   # 5. Construct the system call string
-  mycall <- paste('timeout 180 ./IBCgrassGUI', 
+  mycall <- paste('timeout 1800 ./IBCgrassGUI', 
                   landscape_config$ModelVersion, landscape_config$CellNum, 
                   landscape_config$Tmax, landscape_config$InitDuration,
                   pft_filename, landscape_config$SeedInput, 

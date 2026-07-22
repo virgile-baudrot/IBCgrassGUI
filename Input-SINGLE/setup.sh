@@ -1,4 +1,4 @@
-myIP='51.15.201.35'
+myIP='51.15.223.33'
 ssh root@$myIP
 
 ####################### IMAGE SETUP SCRIPT ########################
@@ -74,8 +74,11 @@ cd ~/Input-SINGLE
 rm -f ../Model-files/Grd_* ../Model-files/Pt_*
 Rscript run_scenarios.R
 
-## Fanly:
-Rscript extract_outputs.R
+Rscript run_scenarios.R 100 900
+Rscript extract_outputs.R 100
+
+Rscript run_scenarios.R 300 173
+Rscript extract_outputs.R 300
 
 # Download just the CSVs and the graphic
 rsync -avzP root@$myIP:/home/IBCgrass/output-SINGLE/ ./output-SINGLE/
