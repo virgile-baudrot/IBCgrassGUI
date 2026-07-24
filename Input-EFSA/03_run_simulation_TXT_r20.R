@@ -28,9 +28,9 @@ if(stressor=="NO"){
 }
 
 ModelVersion <- 3
-CellNum <- 50 # 173
-Tmax <- 50 # if(CONTROL) 9 or 50 else 100
-InitDuration <- 35 # 35 or 3
+CellNum <- 173 # 173
+Tmax <- 40 # if(CONTROL) 9 or 50 else 100
+InitDuration <- 20 # 35 or 3
 NamePftFile <- "Fieldedge.txt"
 SeedInput <- 10
 belowres <- 90
@@ -86,7 +86,7 @@ while(MC<50 & IT<81){
     print(paste("group", group, "stressor", stressor, "stressor_type", stressor_type))
     print(paste("MC run:", MC, "over", nMC))
     # 120s 
-    mycall <- paste('timeout 120 ./IBCgrassGUI', ModelVersion, CellNum, Tmax, InitDuration,
+    mycall <- paste('timeout 180 ./IBCgrassGUI', ModelVersion, CellNum, Tmax, InitDuration,
                     NamePftFile, SeedInput, belowres, abres, abampl, tramp, graz, cut,
                     week_start, HerbDuration, HerbEffectType, EffectModel, scenario, MC, sep=" ")
     # RUN
