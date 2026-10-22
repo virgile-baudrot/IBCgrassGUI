@@ -35,8 +35,8 @@ run_ibcgrass <- function(species_data, landscape_config, scenario_setup, scenari
   res <- system(mycall, intern = TRUE, ignore.stderr = TRUE)
   
   exit_status <- attr(res, "status")
-  if (!is.null(exit_status) && exit_status == 124) {
-    warning(paste("Run", MC, "stopped after 180 seconds due to timeout."))
+  if (!is.null(exit_status) && exit_status != 0) { # 124 = timeout, 3 = input file error
+    warning(paste("Run", MC, "failed with exit status", exit_status))
   }
   
   setwd('../Input-SINGLE')

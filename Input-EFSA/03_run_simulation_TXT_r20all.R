@@ -102,8 +102,8 @@ while(MC <= nMC & IT <= 21){
     
     # GESTION DU BLOCAGE
     # Si UN SEUL stresseur plante pour cette communauté, on l'abandonne entièrement pour garder des données équilibrées
-    if (!is.null(exit_status) && exit_status == 124) {
-      print(paste("Run", MC, "for stressor", current_stressor, "stopped after 600 seconds. Discarding community."))
+    if (!is.null(exit_status) && exit_status != 0) { # 124 = timeout, 3 = input file error
+      print(paste("Run", MC, "for stressor", current_stressor, "failed with exit status", exit_status, ". Discarding community."))
       community_success <- FALSE
       break 
     }

@@ -91,8 +91,8 @@ while(MC<=10 & IT<21){
   res <- system(mycall, intern=TRUE, ignore.stderr = TRUE)
   # CHECK
   exit_status <- attr(res, "status")
-  if (!is.null(exit_status) && exit_status == 124) {
-    print(paste("Run", MC, "stop after 120 seconds."))
+  if (!is.null(exit_status) && exit_status != 0) { # 124 = timeout, 3 = input file error
+    print(paste("Run", MC, "failed with exit status", exit_status))
   } else{
     MC=MC+1
   }
