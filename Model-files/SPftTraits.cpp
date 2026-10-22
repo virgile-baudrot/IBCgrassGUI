@@ -144,7 +144,18 @@ void SPftTraits::ReadPFTDef(const string& file) {
 		>> traits->EC50_establishment >> traits->slope_establishment
 		>> traits->EC50_sterility >> traits->slope_sterility
 		>> traits->EC50_seednumber >> traits->slope_seednumber
-		>> traits->FlowerWeek >> traits->DispWeek >> traits->GermPeriod >> traits->overwintering >> traits->comp_power;
+		>> traits->FlowerWeek >> traits->DispWeek >> traits->GermPeriod;
+		// stop if a mandatory value is missing or not a number (e.g. "NA")
+		if (ss.fail()) {
+			cerr << "Error while reading PFT file " << file << ": invalid or missing value for PFT " << traits->name << "\n";
+			exit(3);
+		}
+		// optional columns: defaults are kept when absent
+		ss >> traits->overwintering >> traits->comp_power;
+		if (ss.fail() && !ss.eof()) {
+			cerr << "Error while reading PFT file " << file << ": invalid value for overwintering/comp_power of PFT " << traits->name << "\n";
+			exit(3);
+		}
 		// add a new PFT to the list of PFTs
 		SPftTraits::PftLinkList.insert(std::make_pair(traits->name, traits));
 	}// end read all trait data for PFTs
