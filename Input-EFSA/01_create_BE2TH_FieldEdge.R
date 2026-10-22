@@ -4,12 +4,14 @@ write.table(ds, file="Input-EFSA/Fieldedge_LECAcl4plb.txt", sep="\t", row.names=
 
 #################
 dBE2TH_full <- read.csv("Input-EFSA/Plant traits full dataset_BE2TH.csv", header=TRUE, sep=",", stringsAsFactors=FALSE)
-dBE2TH_full <- dBE2TH_full[dBE2TH_full$Clonal != "unknown", ]
-dBE2TH_full <- dBE2TH_full[!is.na(dBE2TH_full$LMR), ]
-dBE2TH_full <- dBE2TH_full[!is.na(dBE2TH_full$MaxMass..mg.) , ]
-dBE2TH_full <- dBE2TH_full[!is.na(dBE2TH_full$mSeed..mg.), ]
+dBE2TH_full <- dBE2TH_full[!dBE2TH_full$Clonal %in% c("unknown", ""), ] # "" is a missing clonal status
+# remove species with NA in any trait passed to the model (see build_Fieldedge_BE2TH)
+trait_cols <- c("LMR", "MaxMass..mg.", "mSeed..mg.", "Dist..m.", "Gmax", "SLA.comb.", "Memo..weeks.",
+                "Clonal", "meanSpacerLength..cm.", "sdSpacerLength..cm.", "Resshare")
+dBE2TH_full <- dBE2TH_full[complete.cases(dBE2TH_full[, trait_cols]), ]
 dBE2TH_full <- dBE2TH_full[dBE2TH_full$Note != "Tree", ] # remove Trees
 write.csv(dBE2TH_full, file="Input-EFSA/BE2TH_cleaned.csv", row.names=FALSE)
+file.copy("Input-EFSA/BE2TH_cleaned.csv", "Input-SINGLE/BE2TH_cleaned.csv", overwrite=TRUE)
 
 # select biogeography
 # "STE_I1", "ANA_I1", "BLS_I1", "ALP_I1", "ATL_I1", "BOR_I1", "CON_I1", "PAN_I1", "MED_I1", "MAC_I1"

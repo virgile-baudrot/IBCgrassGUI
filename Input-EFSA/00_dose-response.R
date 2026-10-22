@@ -76,6 +76,7 @@ df_effect_dist = do.call("rbind", effect_dist)
 
 ggplot(data=df_effect_dist) +
   theme_minimal() +
+  scale_y_log10() +
   labs(title="Species Sensitivity Distribution",
        x="Species Distribution", y="Effect Level") +
   scale_color_manual(

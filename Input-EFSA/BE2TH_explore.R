@@ -1,13 +1,14 @@
 library(dplyr)
 library(ggplot2)
-library(tidygraph)
 library(readr)
 library(tidyverse)
 library(reshape2)
 
 df_BE2TH <- readr::read_csv("Input-EFSA/BE2TH_cleaned.csv")
 
-
+# figures for the report (A4 text width ~16 cm)
+PATH_FIG = "EFSA_REPORT/figures/"
+dir.create(PATH_FIG, showWarnings = FALSE)
 
 
 # Extract just the biome columns mentioned in the plots
@@ -20,8 +21,9 @@ df_biomes <- df_BE2TH %>%
   mutate(across(everything(), as.numeric))
 
 ###### BAR PLOT
-pft_cols <- c("Category", "LMR", "MaxMass..mg.", "mSeed..mg.", "Dist..m.", 
-              "Gmax", "Memo..weeks.", "SLA.comb.", "Palat", "Clonal", 
+# only traits passed to the model (Category and Palat are not used in simulations)
+pft_cols <- c("LMR", "MaxMass..mg.", "mSeed..mg.", "Dist..m.",
+              "Gmax", "Memo..weeks.", "SLA.comb.", "Clonal",
               "meanSpacerLength..cm.", "sdSpacerLength..cm.", "Resshare")
 
 # 2. Préparer les données
@@ -50,9 +52,10 @@ ggplot(bar_data, aes(x = Biome, y = Count, fill = Number)) +
        y = "Number of Species or PFT") +
   theme_minimal() +
   theme(panel.grid.major.x = element_blank())
+ggsave(paste0(PATH_FIG, "Figure_4.3_species_vs_PFT.png"), width = 16, height = 9, units = "cm", dpi = 300, bg = "white")
 
 
-ç###### CORRELATION
+###### CORRELATION
 # Calculate correlation matrix
 cor_matrix <- cor(df_biomes, use = "pairwise.complete.obs")
 
@@ -71,6 +74,7 @@ ggplot(cor_long, aes(x = Var1, y = Var2, fill = value)) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
         plot.title = element_text(hjust = 0.5))
+ggsave(paste0(PATH_FIG, "Figure_4.2_correlation.png"), width = 16, height = 12, units = "cm", dpi = 300, bg = "white")
 
 
 ###### CO-OCCURENCE
@@ -92,3 +96,4 @@ ggplot(co_long, aes(x = Var1, y = Var2, fill = value)) +
   theme_minimal() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
         plot.title = element_text(hjust = 0.5))
+ggsave(paste0(PATH_FIG, "Figure_4.1_cooccurrence.png"), width = 16, height = 12, units = "cm", dpi = 300, bg = "white")
