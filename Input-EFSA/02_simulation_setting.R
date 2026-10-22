@@ -46,7 +46,11 @@ ec50_foo = function(dose_response, rate, slope){
     ec50 = (rate^slope/dose_response - rate^slope)^(1/slope)
     return(ec50)
 }
-build_dose_response <- function(n, stressor_type="low"){
+# Species Sensitivity Distribution (SSD): one effect level (0-1) per species
+build_effect_dist <- function(n, stressor_type="low"){
+    if(stressor_type=="z00"){
+      out_dist = rep(0, n)
+    }
     if(stressor_type=="high"){
       out_dist = runif(n, 0.25, 0.50)
     }
@@ -71,9 +75,14 @@ build_dose_response <- function(n, stressor_type="low"){
     if(stressor_type=="z05"){
       out_dist = rlnorm(n, meanlog = mu_lognorm(0.5), sdlog = 1)
     }
-    rxp = ec50_foo(out_dist,1,4)
-    # replace NA by median
-    rxp[is.na(rxp)] = median(rxp, na.rm = TRUE)
+    # an effect of 1 (100%) has no finite EC50, cap just below
+    return(pmin(out_dist, 0.999))
+}
+# EC50 giving the species effect at application rate 1 and slope 4 (EffectModel=2)
+build_dose_response <- function(effect){
+    rxp = ec50_foo(effect,1,4)
+    # no effect: EC50 = 0 means "no effect" in the C++ model
+    rxp[effect == 0] = 0
   return(rxp)
 }
 
@@ -116,23 +125,12 @@ mu_lognorm <- function(z, sdlog=1){
 }
 
 # Function to build HerbFact data frame for EFSA simulations
+# The effect of species i in year t is HerbFact[t] * sens[i] (C++ EffectModel=0).
+# The species effect (SSD) is in sens (see build_Fieldedge_BE2TH), so the yearly
+# factor is 1: same effect every year, as in the dose-response mode with rate=1.
 build_HerbFact <- function(HerbDuration, stressor, stressor_type){
-  
-    level_vec = rep(0, HerbDuration)
-    
-    if(stressor_type=="low") level_vec = runif(HerbDuration, 0.01,0.25)
-    if(stressor_type=="medium") level_vec = pmax(rnorm(HerbDuration, 0.25, 0.05), 0)
-    if(stressor_type=="high") level_vec = runif(HerbDuration, 0.25,0.50)
-    
-    if(stressor_type=="z01") level_vec = rlnorm(HerbDuration, meanlog = mu_lognorm(0.1), sdlog = 1)
-    if(stressor_type=="z02") level_vec = rlnorm(HerbDuration, meanlog = mu_lognorm(0.2), sdlog = 1)
-    if(stressor_type=="z03") level_vec = rlnorm(HerbDuration, meanlog = mu_lognorm(0.3), sdlog = 1)
-    if(stressor_type=="z04") level_vec = rlnorm(HerbDuration, meanlog = mu_lognorm(0.4), sdlog = 1)
-    if(stressor_type=="z05") level_vec = rlnorm(HerbDuration, meanlog = mu_lognorm(0.5), sdlog = 1)
-    
-    if(stressor_type=="z00") level_vec = level_vec
-    
-    level_vec = pmin(level_vec, 1)
+
+    level_vec = rep(ifelse(stressor_type=="z00", 0, 1), HerbDuration)
     no_vec = rep(0, HerbDuration)
     
     data.frame(
@@ -152,11 +150,10 @@ build_Fieldedge_BE2TH = function(dfBE2TH, group = "", stressor="NO", stressor_ty
 
     df = dfBE2TH[dfBE2TH[[group]]==1,]
     n = nrow(df)
-    if(stressor_type=="z00"){
-      rxp = 0
-    } else{
-      rxp = build_dose_response(n, stressor_type)
-    }
+    # one effect per species from the SSD, used both as sens (txt, EffectModel=0)
+    # and as EC50 (dose-response, EffectModel=2) so that both modes give the same effect
+    effect = build_effect_dist(n, stressor_type)
+    rxp = build_dose_response(effect)
     
     SPECIES = gsub(" ", "_", df$Species)
     SPECIES = gsub("\\.", "", SPECIES)
@@ -188,7 +185,7 @@ build_Fieldedge_BE2TH = function(dfBE2TH, group = "", stressor="NO", stressor_ty
         Resshare=df$Resshare,
         AllocSpacer=ifelse(df$Clonal==1, 0.05 , 0),
         mSpacer=ifelse(df$Clonal==1, 70, 0),
-        sens=1, # MUST BE 1 for sensitivity !!! SPECIFICALLY FOR TXT !!!
+        sens=effect, # species effect in txt mode (multiplies HerbFact.txt)
         allocroot=1,
         allocshoot=1,
         EC50_biomass = if("biomass" %in% stressor){rxp}else{0},

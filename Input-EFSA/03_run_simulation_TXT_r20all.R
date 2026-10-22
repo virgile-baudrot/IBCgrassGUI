@@ -35,8 +35,8 @@ HerbEffectType <- 1
 EffectModel <- 0
 nMC <- 10
 
-# INITIALISATION : On crée la base avec TOUS les stresseurs pour que build_dose_response() 
-# assigne la même sensibilité (rxp) dans toutes les colonnes EC50_ de chaque espèce.
+# INITIALISATION : chaque espèce reçoit un effet tiré de la SSD (colonne sens, utilisée
+# en mode txt), le même pour tous les stresseurs d'une communauté.
 df_fieldedge_INIT <- build_Fieldedge_BE2TH(
   dfBE2TH,
   group = group,
