@@ -31,7 +31,7 @@ build_Fieldedge_Single <- function(df) {
   SPECIES = iconv(SPECIES, "latin1", "ASCII//TRANSLIT", sub="")
   
   data.frame(
-    ID=1:n, Species=SPECIES, MaxAge=100, AllocSeed=0.05, LMR=df$LMR,
+    ID=1:n, Species=SPECIES, MaxAge=df$MaxAge, AllocSeed=0.05, LMR=df$LMR,
     m0=df$mSeed..mg., MaxMass=df$MaxMass..mg., mSeed=df$mSeed..mg.,
     Dist=df$Dist..m., pEstab=0.5, Gmax=df$Gmax, SLA=df$SLA.comb.,
     palat=0.5, memo=df$Memo..weeks., RAR=1, growth=0.25, mThres=0.2,

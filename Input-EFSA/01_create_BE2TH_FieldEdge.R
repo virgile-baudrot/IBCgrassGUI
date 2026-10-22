@@ -5,9 +5,12 @@ write.table(ds, file="Input-EFSA/Fieldedge_LECAcl4plb.txt", sep="\t", row.names=
 #################
 dBE2TH_full <- read.csv("Input-EFSA/Plant traits full dataset_BE2TH.csv", header=TRUE, sep=",", stringsAsFactors=FALSE)
 dBE2TH_full <- dBE2TH_full[!dBE2TH_full$Clonal %in% c("unknown", ""), ] # "" is a missing clonal status
+# life span -> MaxAge (see 00_life_span.R)
+dLifeSpan <- read.csv("Input-EFSA/BE2TH_lifespan.csv", stringsAsFactors=FALSE)
+dBE2TH_full$MaxAge <- dLifeSpan$MaxAge[match(dBE2TH_full$Species, dLifeSpan$Species)]
 # remove species with NA in any trait passed to the model (see build_Fieldedge_BE2TH)
 trait_cols <- c("LMR", "MaxMass..mg.", "mSeed..mg.", "Dist..m.", "Gmax", "SLA.comb.", "Memo..weeks.",
-                "Clonal", "meanSpacerLength..cm.", "sdSpacerLength..cm.", "Resshare")
+                "Clonal", "meanSpacerLength..cm.", "sdSpacerLength..cm.", "Resshare", "MaxAge")
 dBE2TH_full <- dBE2TH_full[complete.cases(dBE2TH_full[, trait_cols]), ]
 dBE2TH_full <- dBE2TH_full[dBE2TH_full$Note != "Tree", ] # remove Trees
 write.csv(dBE2TH_full, file="Input-EFSA/BE2TH_cleaned.csv", row.names=FALSE)

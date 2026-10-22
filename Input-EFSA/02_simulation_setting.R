@@ -165,7 +165,7 @@ build_Fieldedge_BE2TH = function(dfBE2TH, group = "", stressor="NO", stressor_ty
     df <- data.frame(
         ID=1:n,
         Species=SPECIES,
-        MaxAge=100,
+        MaxAge=df$MaxAge, # 1 annual, 2 biennial, 100 perennial (see 00_life_span.R)
         AllocSeed=0.05,
         LMR=df$LMR,
         m0=df$mSeed..mg.,

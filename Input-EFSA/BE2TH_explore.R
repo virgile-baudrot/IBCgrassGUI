@@ -24,7 +24,7 @@ df_biomes <- df_BE2TH %>%
 # only traits passed to the model (Category and Palat are not used in simulations)
 pft_cols <- c("LMR", "MaxMass..mg.", "mSeed..mg.", "Dist..m.",
               "Gmax", "Memo..weeks.", "SLA.comb.", "Clonal",
-              "meanSpacerLength..cm.", "sdSpacerLength..cm.", "Resshare")
+              "meanSpacerLength..cm.", "sdSpacerLength..cm.", "Resshare", "MaxAge")
 
 # 2. Préparer les données
 bar_data <- df_BE2TH %>%
