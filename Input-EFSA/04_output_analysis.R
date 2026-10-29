@@ -1,576 +1,269 @@
-build_DF <- function(ls_files){
-  sim_repo <- basename(names(ls_files))
-  df = lapply(seq_along(ls_files), function(id){
-    d = ls_files[[id]]
-    combined_df <- lapply(seq_along(d), function(i) {
-      df <- tryCatch({
-        read.table(d[[i]], sep = "\t", header = TRUE)
-      }, error = function(e) {
-        warning(paste("Erreur de lecture sur le fichier :", d[[i]]))
-        return(NULL)
-      })
-      
-      if (!is.null(df)) {
-        df$simulations = i
-        return(df)
-      } else {
-        return(NULL)
-      }
-    }) %>%
-      dplyr::bind_rows()
-    combined_df$modality = sim_repo[[id]]
-    return(combined_df)
-  }) %>%
-    dplyr::bind_rows()
-  splitter = str_split(df$modality, "_", simplify = TRUE)
-  df$community = splitter[,1]
-  df$stressor = splitter[,4]
-  df$stressor_level = splitter[,3]
-  df$stressor = factor(
-    df$stressor,
-    levels = c("NO", "biomass", "SEbiomass", "survival", "sterility", "seednumber","establishment"))
-  return(df)
+# Analysis and figures of the simulations of §4.3 and §4.4 (and shared helpers for §4.1)
+#
+#   Rscript Input-EFSA/04_output_analysis.R [out_4.3] [out_4.4] [fig_dir]
+#   defaults: outputs/4.3_control_design outputs/4.4_stressor_effects EFSA_REPORT/figures
+# Reads the Pt.csv.gz / Grd.csv.gz written by run_4.3_control_design.R and
+# run_4.4_stressor_effects.R. The file can also be sourced for its functions
+# (output-SINGLE/analyze_outputs_*.R do so).
+#
+# Endpoints are computed from Pt_ (living plants per species), not from the shannon and
+# NPFT columns of Grd_, which count litter and seeds (R§5.2). Pt_ has no row for a species
+# without plant or seed: these rows are added with zeros before any sum.
+# Effects are paired: each treatment run is divided by the control run of the same
+# community (same species, same seed), then summarised over communities by the median and
+# the 2.5 and 97.5 percentiles. "Pooled" figures pool the communities of all biomes.
+# After the first herbicide year a treatment run follows another random stream than its
+# control, so its ratio also contains the stochasticity of the model. The null run of each
+# community (no herbicide, new random stream from year Tinit+1) gives that part alone:
+# its interval (grey) is drawn behind every effect and is the reference for a zero effect.
+
+suppressPackageStartupMessages({
+  library(data.table)
+  library(ggplot2)
+})
+
+STRESSOR_ORDER <- c("NO", "biomass", "SEbiomass", "survival", "establishment", "sterility", "seednumber")
+PT_VARS <- c("Inds", "seedlings", "seeds", "repromass", "cover", "shootmass")
+# Grd_ columns that hold one end-of-run value on every row (R§5.2): never plotted
+GRD_CONSTANT <- c("meanShannon", "meanNPFT", "NNonClonal", "NClonal", "NGenets")
+ENDPOINT_LABELS <- c(NInd = "Number of individuals", shootmass = "Above-ground biomass (mg)",
+                     richness = "Species richness", shannon = "Shannon diversity",
+                     bray_curtis = "Bray-Curtis distance to control")
+
+# ------------------------------------------------------------------
+# Reading and endpoints
+# ------------------------------------------------------------------
+
+read_provenance <- function(dir) jsonlite::read_json(file.path(dir, "provenance.json"))
+
+# Add the missing Pt_ rows (species without plant or seed) with zeros.
+# run_cols identify a run, community_cols the set of species shared by its runs.
+complete_pt <- function(pt, run_cols, community_cols = run_cols) {
+  species <- unique(pt[, c(community_cols, "PFT"), with = FALSE])
+  times <- unique(pt[, c(run_cols, "Time"), with = FALSE])
+  full <- merge(times, species, by = community_cols, allow.cartesian = TRUE)
+  pt <- pt[full, on = c(run_cols, "Time", "PFT")]
+  for (v in intersect(PT_VARS, names(pt))) set(pt, which(is.na(pt[[v]])), v, 0)
+  pt
 }
 
-# -------------------
-# POPULATION CONTROL
-# -------------------
-p_popC_ind <- function(Grd_DF, time_burn=NA){
-  if(!is.na(time_burn)){
-    Grd_DF_burnin <- Grd_DF[Grd_DF$Time > time_burn*30,]
-    p <- ggplot() +
-      theme_minimal() +
-      labs(x="Time (years)", y="Number of Individuals") + 
-      scale_x_continuous(limits=c(time_burn, NA)) +
-      geom_line(data = Grd_DF_burnin,
-                aes(x = Time / 30, y = NInd, group = simulations),
-                alpha = 0.2  ) + 
-      facet_grid(~ community)
-  } else{
-    p <- ggplot() +
-      theme_minimal() +
-      labs(x="Time (years)", y="Number of Individuals") + 
-      geom_line(data = Grd_DF,
-                aes(x = Time / 30, y = NInd, group = simulations),
-                alpha = 0.2  ) + 
-      facet_grid(~ community)
-  }
-  return(p)
+# Community endpoints of each run and time step, from living plants (Inds)
+pt_endpoints <- function(pt, run_cols) {
+  pt[, .(NInd = as.numeric(sum(Inds)),
+         shootmass = as.numeric(sum(shootmass)),
+         richness = as.numeric(sum(Inds > 0)),
+         shannon = {
+           p <- Inds[Inds > 0] / sum(Inds)
+           -sum(p * log(p))
+         }), by = c(run_cols, "Time")]
 }
 
-p_popC_mass <- function(Grd_DF, time_burn=NA){
-  if(!is.na(time_burn)){
-    Grd_DF_burnin <- Grd_DF[Grd_DF$Time > time_burn*30,]
-    p <- ggplot() +
-      theme_minimal() +
-      labs(x="Time (years)", y="Total Mass (g)") + 
-      scale_x_continuous(limits=c(time_burn, NA)) +
-      geom_line(data = Grd_DF_burnin,
-                aes(x = Time / 30, y = totMass, group = simulations),
-                alpha = 0.2  ) + 
-      facet_grid(~ community)
-  } else{
-    p <- ggplot() +
-      theme_minimal() +
-      labs(x="Time (years)", y="Total Mass (g)") + 
-      geom_line(data = Grd_DF,
-                aes(x = Time / 30, y = totMass, group = simulations),
-                alpha = 0.2  ) + 
-      facet_grid(~ community)
-  }
-  return(p)
+# Bray-Curtis distance (on Inds per species) between each treatment run and its control
+paired_bray_curtis <- function(pt, community_cols) {
+  ctl <- pt[stressor == "NO", c(community_cols, "Time", "PFT", "Inds"), with = FALSE]
+  setnames(ctl, "Inds", "Inds_control")
+  x <- ctl[pt[stressor != "NO"], on = c(community_cols, "Time", "PFT")]
+  x[, .(value = sum(abs(Inds - Inds_control)) / sum(Inds + Inds_control)),
+    by = c(community_cols, "level", "stressor", "Time")]
 }
 
-p_popC_pft <- function(Grd_DF, time_burn=NA){
-  if(!is.na(time_burn)){
-    Grd_DF_burnin <- Grd_DF[Grd_DF$Time > time_burn*30,]
-    p <- ggplot() +
-      theme_minimal() +
-      labs(x="Time (years)", y="Number of PFT") + 
-      scale_x_continuous(limits=c(time_burn, NA)) +
-      geom_line(data = Grd_DF_burnin,
-                aes(x = Time / 30, y = NPFT, group = simulations),
-                alpha = 0.2  ) + 
-      facet_wrap(~ community, scale="free")
-  } else{
-    p <- ggplot() +
-      theme_minimal() +
-      labs(x="Time (years)", y="Number of PFT") + 
-      geom_line(data = Grd_DF,
-                aes(x = Time / 30, y = NPFT, group = simulations),
-                alpha = 0.2  ) + 
-      facet_wrap(~ community, scale="free")
-  }
-  return(p)
+# Ratio treatment / paired control for each endpoint (NA when the control is 0)
+paired_effects <- function(ep, community_cols, endpoints = c("NInd", "shootmass", "richness", "shannon")) {
+  long <- melt(ep, id.vars = c(community_cols, "level", "stressor", "Time"),
+               measure.vars = endpoints, variable.name = "endpoint", variable.factor = FALSE)
+  ctl <- long[stressor == "NO", c(community_cols, "Time", "endpoint", "value"), with = FALSE]
+  setnames(ctl, "value", "control")
+  eff <- ctl[long[stressor != "NO"], on = c(community_cols, "Time", "endpoint")]
+  eff[, effect := fifelse(control > 0, value / control, NA_real_)]
+  eff
 }
 
-p_popC_div <- function(Grd_DF, time_burn=NA){
-  if(!is.na(time_burn)){
-    Grd_DF_burnin <- Grd_DF[Grd_DF$Time > time_burn*30,]
-    p <- ggplot() +
-      theme_minimal() +
-      labs(x="Time (years)", y="Shannon Diversity") + 
-      scale_x_continuous(limits=c(time_burn, NA)) +
-      geom_line(data = Grd_DF_burnin,
-                aes(x = Time / 30, y = shannon, group = simulations),
-                alpha = 0.2  ) + 
-      facet_grid(~ community)
-  } else{
-    p <- ggplot() +
-      theme_minimal() +
-      labs(x="Time (years)", y="Shannon Diversity") + 
-      geom_line(data = Grd_DF,
-                aes(x = Time / 30, y = shannon, group = simulations),
-                alpha = 0.2  ) + 
-      facet_grid(~ community)
-  }
-  return(p)
+summarise_effects <- function(eff, by) {
+  eff[, .(median = median(effect, na.rm = TRUE),
+          q025 = quantile(effect, 0.025, na.rm = TRUE, names = FALSE),
+          q975 = quantile(effect, 0.975, na.rm = TRUE, names = FALSE),
+          n = sum(!is.na(effect))), by = c(by, "Time")]
 }
 
-# -------------------
-# INDIVIDUALS
-# -------------------
-p_ind_ind <- function(Pt_DF_reduce){
-  mx_inds = max(Pt_DF_reduce$Inds)
-  Pt_DF_reduce |>
-    ggplot() +
+# All communities of a §4.4 output folder. week: within-year week kept (20 = before seed
+# release, R§5.2); NA keeps every week (memory: about 1 M Pt rows per community).
+read_44 <- function(root, week = 20) {
+  dirs <- dirname(list.files(root, "^Pt\\.csv\\.gz$", recursive = TRUE, full.names = TRUE))
+  if (length(dirs) == 0) stop("no Pt.csv.gz under ", root)
+  run_cols <- c("biome", "MC", "level", "stressor")
+  res <- lapply(dirs, function(d) {
+    pt <- fread(file.path(d, "Pt.csv.gz"))[, seed := NULL]
+    if (!is.na(week)) pt <- pt[Time %% 30 == week]
+    pt <- complete_pt(pt, run_cols, c("biome", "MC"))
+    list(ep = pt_endpoints(pt, run_cols), bc = paired_bray_curtis(pt, c("biome", "MC")))
+  })
+  ep <- rbindlist(lapply(res, `[[`, "ep"))
+  eff <- paired_effects(ep, c("biome", "MC"))
+  bc <- rbindlist(lapply(res, `[[`, "bc"))[, `:=`(endpoint = "bray_curtis", effect = value)]
+  list(ep = ep, eff = rbind(eff, bc, fill = TRUE), prov = read_provenance(dirs[1]))
+}
+
+# One design of §4.3 (all weeks)
+read_43 <- function(dir) {
+  pt <- fread(file.path(dir, "Pt.csv.gz"))[, seed := NULL]
+  pt <- complete_pt(pt, c("biome", "design", "rep"))
+  list(pt = pt, grd = fread(file.path(dir, "Grd.csv.gz")), prov = read_provenance(dir))
+}
+
+# ------------------------------------------------------------------
+# Plot helpers
+# ------------------------------------------------------------------
+
+# Herbicide years Tinit+1 ... Tinit+HerbDuration, shown on every time plot
+phase_layer <- function(prov) {
+  list(annotate("rect", xmin = prov$Tinit, xmax = prov$Tinit + prov$HerbDuration,
+                ymin = -Inf, ymax = Inf, fill = "#d73027", alpha = 0.10),
+       geom_vline(xintercept = c(prov$Tinit, prov$Tinit + prov$HerbDuration),
+                  linetype = "dotted", colour = "grey40", linewidth = 0.3))
+}
+
+save_fig <- function(p, file, width = 16, height = 12) {
+  ggsave(file, p, width = width, height = height, units = "cm", dpi = 300, bg = "white")
+  message("written: ", file)
+}
+
+# ------------------------------------------------------------------
+# §4.3 control runs
+# ------------------------------------------------------------------
+
+# Number of individuals per species over time, one panel per replicate (Fig. 4.12, 4.13, 4.16, 4.17)
+plot_species_heatmap <- function(pt) {
+  ggplot(pt) +
     theme_minimal() +
-    scale_fill_gradientn(
-      colors = c("red", "blue", "cyan", "green"),
-      values = scales::rescale(c(0, 0.001, 0.5, 1)),
-      name = "# Inds"
-    ) +
-    labs(x="Time (years)", y="Individuals/PFT") + 
-    geom_tile(aes(
-      x = Time / 30, y = PFT, fill=Inds)) +
-    facet_grid(~ simulations)
+    scale_fill_gradientn(colors = c("red", "blue", "cyan", "green"),
+                         values = scales::rescale(c(0, 0.001, 0.5, 1)), name = "# Inds") +
+    labs(x = "Time (years)", y = "Species") +
+    geom_tile(aes(x = Time / 30, y = PFT, fill = Inds)) +
+    theme(axis.text.y = element_text(size = 4)) +
+    facet_grid(~ rep, labeller = label_both)
 }
 
-
-df_ind_sum <- function(Pt_DF_reduce){
-  Pt_DF_sum = Pt_DF_reduce %>%
-    dplyr::group_by(PFT, simulations) |>
-    dplyr::summarise(
-      sum_perPFT = sum(Inds),
-      sum_shootmass = sum(shootmass),
-      sum_seedling = sum(seedlings),
-      sum_seed = sum(seeds)) |>
-    dplyr::arrange(sum_perPFT) 
-  return(Pt_DF_sum)
+# Species ranking: sum over the run of individuals, shoot mass, seedlings or seeds
+# (Fig. 4.11, 4.14, 4.15, 4.18)
+species_sums <- function(pt) {
+  pt[, .(individuals = sum(Inds), shootmass = sum(shootmass), seedlings = sum(seedlings),
+         seeds = sum(seeds)), by = .(PFT, rep)]
 }
 
-p_indC <- function(Pt_DF_sum, level){
-  if(level=="individuals"){
-    p <- ggplot(data = Pt_DF_sum) +
-      theme_minimal() +
-      labs(x="PFT (Species)", y="Sum of individuals / PFT") +
-      theme(
-        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)
-      ) +
-      geom_bar(
-        stat = "identity", fill = "steelblue",
-        aes(x = reorder(PFT, -sum_perPFT), y = sum_perPFT)
-      ) +
-      facet_grid(simulations~.)
-  }
-  if(level=="shootmass"){
-    p <- ggplot(data = Pt_DF_sum) +
-      theme_minimal() +
-      labs(x="PFT (Species)", y="Sum of shootmass / PFT") +
-      theme(
-        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)
-      ) +
-      geom_bar(
-        stat = "identity", fill = "#F54927",
-        aes(x = reorder(PFT, -sum_shootmass), y = sum_shootmass)
-      ) +
-      facet_grid(simulations~.)
-  }
-  if(level=="seedling"){
-    p <- ggplot(data = Pt_DF_sum) +
-      theme_minimal() +
-      labs(x="PFT (Species)", y="Sum of sum_seedling / PFT") +
-      theme(
-        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)
-      ) +
-      geom_bar(
-        stat = "identity", fill = "#5AA33B",
-        aes(x = reorder(PFT, -sum_seedling), y = sum_seedling)
-      ) +
-      facet_grid(simulations~.)
-  }
-  if(level=="seeds"){
-    p <- ggplot(data = Pt_DF_sum) +
-      theme_minimal() +
-      labs(x="PFT (Species)", y="Sum of seeds / PFT") +
-      theme(
-        axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5)
-      ) +
-      geom_bar(
-        stat = "identity", fill = "#953BA3",
-        aes(x = reorder(PFT, -sum_seed), y = sum_seed)
-      ) +
-      facet_grid(simulations~.)
-  }
-  return(p)
-} 
-
-# -------------------
-# POPULATION EFFECT
-# -------------------
-p_popE_ind <- function(Grd_DF, time_burn=NA){
-  if(!is.na(time_burn)){
-    Grd_DF_burnin <- Grd_DF[Grd_DF$Time > time_burn*30,]
-    p <- ggplot() +
-      theme_minimal() +
-      labs(x="Time (years)", y="Number of Individuals") + 
-      scale_x_continuous(limits=c(time_burn, NA)) +
-      geom_line(data = Grd_DF_burnin,
-                aes(x = Time / 30, y = NInd, group = simulations),
-                alpha = 0.2  ) + 
-      facet_grid(stressor ~ stressor_level)
-  } else{
-    p <- ggplot() +
-      theme_minimal() +
-      labs(x="Time (years)", y="Number of Individuals") + 
-      geom_line(data = Grd_DF,
-                aes(x = Time / 30, y = NInd, group = simulations),
-                alpha = 0.2  ) + 
-      facet_grid(stressor ~ stressor_level)
-  }
-  return(p)
-}
-
-p_popE_mass <- function(Grd_DF, time_burn=NA){
-  if(!is.na(time_burn)){
-    Grd_DF_burnin <- Grd_DF[Grd_DF$Time > time_burn*30,]
-    p <- ggplot() +
-      theme_minimal() +
-      labs(x="Time (years)", y="Total Mass (g)") + 
-      scale_x_continuous(limits=c(time_burn, NA)) +
-      geom_line(data = Grd_DF_burnin,
-                aes(x = Time / 30, y = totMass, group = simulations),
-                alpha = 0.2  ) + 
-      facet_grid(stressor ~ stressor_level)
-  } else{
-    p <- ggplot() +
-      theme_minimal() +
-      labs(x="Time (years)", y="Total Mass (g)") + 
-      geom_line(data = Grd_DF,
-                aes(x = Time / 30, y = totMass, group = simulations),
-                alpha = 0.2  ) + 
-      facet_grid(stressor ~ stressor_level)
-  }
-  return(p)
-}
-
-p_popE_pft <- function(Grd_DF, time_burn=NA){
-  if(!is.na(time_burn)){
-    Grd_DF_burnin <- Grd_DF[Grd_DF$Time > time_burn*30,]
-    p <- ggplot() +
-      theme_minimal() +
-      labs(x="Time (years)", y="Number of PFT") + 
-      scale_x_continuous(limits=c(time_burn, NA)) +
-      geom_line(data = Grd_DF_burnin,
-                aes(x = Time / 30, y = NPFT, group = simulations),
-                alpha = 0.2  ) + 
-      facet_wrap(stressor ~ stressor_level, scale="free")
-  } else{
-    p <- ggplot() +
-      theme_minimal() +
-      labs(x="Time (years)", y="Number of PFT") + 
-      geom_line(data = Grd_DF,
-                aes(x = Time / 30, y = NPFT, group = simulations),
-                alpha = 0.2  ) + 
-      facet_wrap(stressor ~ stressor_level, scale="free")
-  }
-  return(p)
-}
-
-p_popE_div <- function(Grd_DF, time_burn=NA){
-  if(!is.na(time_burn)){
-    Grd_DF_burnin <- Grd_DF[Grd_DF$Time > time_burn*30,]
-    p <- ggplot() +
-      theme_minimal() +
-      labs(x="Time (years)", y="Shannon Diversity") + 
-      scale_x_continuous(limits=c(time_burn, NA)) +
-      geom_line(data = Grd_DF_burnin,
-                aes(x = Time / 30, y = shannon, group = simulations),
-                alpha = 0.2  ) + 
-      facet_grid(stressor ~ stressor_level)
-  } else{
-    p <- ggplot() +
-      theme_minimal() +
-      labs(x="Time (years)", y="Shannon Diversity") + 
-      geom_line(data = Grd_DF,
-                aes(x = Time / 30, y = shannon, group = simulations),
-                alpha = 0.2  ) + 
-      facet_grid(stressor ~ stressor_level)
-  }
-  return(p)
-}
-
-df_effect_mean <- function(Grd_DF, time_burn=35){
-  Grd_DF_burnin = Grd_DF[Grd_DF$Time > time_burn*30,]
-  Grd_DF_burnin_sum = Grd_DF_burnin |>
-    dplyr::group_by(Time, stressor_level, stressor) |>
-    dplyr::summarise(
-      mean_NInd = mean(NInd),
-      mean_NPFT = mean(NPFT),
-      mean_totMass = mean(totMass)
-    )
-  return(Grd_DF_burnin_sum)
-}
-
-# ----------------------
-# INDIVIDUALS
-# ----------------------
-p_indE_ind <- function(Pt_DF, stress, stress_level){
-  Pt_DF_reduce <- Pt_DF[Pt_DF$stressor==stress & Pt_DF$stressor_level==stress_level, ]
-  
-  mx_inds = max(Pt_DF_reduce$Inds)
-  Pt_DF_reduce |>
-    ggplot() +
+plot_species_ranking <- function(sums, var = "individuals", top = 30) {
+  fill <- c(individuals = "steelblue", shootmass = "#F54927", seedlings = "#5AA33B", seeds = "#953BA3")
+  ord <- sums[, .(tot = sum(get(var))), by = PFT][order(-tot)][seq_len(min(top, .N)), PFT]
+  ggplot(sums[PFT %in% ord], aes(x = factor(PFT, levels = ord), y = .data[[var]])) +
     theme_minimal() +
-    labs(title=paste("Stressor:", stress, ", level:", stress_level)) +
-    scale_fill_gradientn(
-      colors = c("red", "blue", "cyan", "green"),
-      values = scales::rescale(c(0, 0.001, 0.5, 1)),
-      name = "# Inds"
-    ) +
-    labs(x="Time (years)", y="Individuals/PFT") + 
-    geom_tile(aes(
-      x = Time / 30, y = PFT, fill=Inds)) +
-    facet_grid(~ simulations)
-  
+    theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 6)) +
+    labs(x = "Species", y = paste("Sum of", var, "over the run")) +
+    geom_col(fill = fill[[var]]) +
+    facet_grid(rep ~ ., labeller = label_both)
 }
 
-p_ind_mean <- function(Grd_DF_burnin_sum, item){
-  if(item=="Individuals"){
-    p <- Grd_DF_burnin_sum |>
-      ggplot() +
-      theme_minimal() +
-      labs(x="Time (years)", y="Mean Number of Individuals") + 
-      scale_color_manual(
-        values=c("#64BA2B", "#A7BA2B", "#BA912B", "#BA622B", "#BA392B")) +
-      scale_x_continuous(limits=c(35, NA)) +
-      geom_line(aes(x = Time / 30, y = mean_NInd, color=stressor_level),
-                alpha=0.5) + 
-      facet_grid(~ stressor)
+# Community endpoints of the control runs, one line per replicate, one panel per design
+plot_control_dynamics <- function(ep, ep_name) {
+  ggplot(ep, aes(x = Time / 30, y = .data[[ep_name]], group = rep)) +
+    theme_minimal() +
+    labs(x = "Time (years)", y = ENDPOINT_LABELS[[ep_name]]) +
+    geom_line(alpha = 0.4) +
+    facet_wrap(~ design, scales = "free_y")
+}
+
+# ------------------------------------------------------------------
+# §4.4 effects
+# ------------------------------------------------------------------
+
+# Median and 95 % interval over communities of the paired effect.
+# null: summary of the null runs, without the facet columns that it must repeat over
+plot_effect <- function(s, ep_name, prov, rows, cols, title = NULL, null = NULL) {
+  ref <- if (ep_name == "bray_curtis") 0 else 1
+  ylab <- if (ep_name == "bray_curtis") ENDPOINT_LABELS[[ep_name]] else
+    paste("Treatment / control:", tolower(ENDPOINT_LABELS[[ep_name]]))
+  ggplot(s[endpoint == ep_name], aes(x = Time / 30)) +
+    theme_minimal() +
+    phase_layer(prov) +
+    geom_hline(yintercept = ref, linetype = "dashed", colour = "grey30") +
+    (if (!is.null(null)) geom_ribbon(data = null[endpoint == ep_name], aes(ymin = q025, ymax = q975),
+                                     fill = "grey50", alpha = 0.35)) +
+    (if (!is.null(null)) geom_line(data = null[endpoint == ep_name], aes(y = median), colour = "grey45",
+                                   linewidth = 0.4)) +
+    geom_ribbon(aes(ymin = q025, ymax = q975), fill = "#C75314", alpha = 0.35) +
+    geom_line(aes(y = median), linewidth = 0.4) +
+    labs(x = "Time (years)", y = ylab, title = title,
+         caption = if (!is.null(null)) "Grey: null run / control (no herbicide, new random stream from the first herbicide year)") +
+    facet_grid(as.formula(paste(rows, "~", cols)))
+}
+
+# Effect at the end of the herbicide years and at the end of the run (pooled over biomes)
+effect_table <- function(eff, prov) {
+  yrs <- c(end_exposure = prov$Tinit + prov$HerbDuration, end_run = prov$Tmax)
+  x <- eff[ceiling(Time / 30) %in% yrs]
+  x[, period := names(yrs)[match(ceiling(Time / 30), yrs)]]
+  dcast(summarise_effects(x, c("endpoint", "stressor", "level", "period"))[, Time := NULL],
+        endpoint + stressor + level ~ period, value.var = c("median", "q025", "q975"))
+}
+
+# ------------------------------------------------------------------
+# Main
+# ------------------------------------------------------------------
+
+if (sys.nframe() == 0L) {
+  args <- commandArgs(trailingOnly = TRUE)
+  arg <- function(i, default) if (length(args) >= i) args[i] else default
+  out43 <- arg(1, "outputs/4.3_control_design")
+  out44 <- arg(2, "outputs/4.4_stressor_effects")
+  fig_dir <- arg(3, "EFSA_REPORT/figures")
+  dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
+
+  # §4.3: one set of figures per biome and design
+  for (bdir in list.dirs(out43, recursive = FALSE)) {
+    designs <- intersect(c("full", "nodom", "r20"), basename(list.dirs(bdir, recursive = FALSE)))
+    eps <- list()
+    for (d in designs) {
+      x <- read_43(file.path(bdir, d))
+      tag <- paste0("fig_4.3_", basename(bdir), "_", d)
+      save_fig(plot_species_heatmap(x$pt), paste0(fig_dir, "/", tag, "_heatmap.png"), 24, 14)
+      sums <- species_sums(x$pt)
+      for (v in c("individuals", "shootmass", "seedlings", "seeds"))
+        save_fig(plot_species_ranking(sums, v), paste0(fig_dir, "/", tag, "_ranking_", v, ".png"), 16, 16)
+      eps[[d]] <- pt_endpoints(x$pt, c("design", "rep"))
+    }
+    if (length(eps)) {
+      ep <- rbindlist(eps)[, design := factor(design, levels = designs)]
+      for (e in c("NInd", "shootmass", "richness", "shannon"))
+        save_fig(plot_control_dynamics(ep, e),
+                 paste0(fig_dir, "/fig_4.3_", basename(bdir), "_control_", e, ".png"), 16, 7)
+    }
   }
-  if(item=="Mass") {
-    p <- Grd_DF_burnin_sum |>
-      ggplot() +
-      theme_minimal() +
-      labs(x="Time (years)", y="Mean Total Mass") + 
-      scale_color_manual(
-        values=c("#64BA2B", "#A7BA2B", "#BA912B", "#BA622B", "#BA392B")) +
-      scale_x_continuous(limits=c(35, NA)) +
-      geom_line(aes(x = Time / 30, y = mean_totMass, color=stressor_level),
-                alpha=0.5) + 
-      facet_grid(~ stressor)
+
+  # §4.4: per biome (one stressor) and pooled over biomes (all stressors)
+  if (dir.exists(out44)) {
+    x <- read_44(out44)
+    null_eff <- x$eff[stressor == "null"]
+    eff <- x$eff[stressor != "null"][, stressor := factor(stressor, levels = STRESSOR_ORDER[-1])]
+    by_biome <- summarise_effects(eff, c("endpoint", "biome", "stressor", "level"))
+    pooled <- summarise_effects(eff, c("endpoint", "stressor", "level"))
+    null_by_biome <- summarise_effects(null_eff, c("endpoint", "biome"))
+    null_pooled <- summarise_effects(null_eff, "endpoint")
+    # the null rows are written with stressor "null" and level "z00"
+    fwrite(rbind(by_biome, null_by_biome[, `:=`(stressor = "null", level = "z00")], use.names = TRUE),
+           file.path(out44, "effects_by_biome.csv"))
+    fwrite(rbind(pooled, null_pooled[, `:=`(stressor = "null", level = "z00")], use.names = TRUE),
+           file.path(out44, "effects_pooled.csv"))
+    fwrite(rbind(effect_table(eff, x$prov), effect_table(null_eff, x$prov)),
+           file.path(out44, "effects_table.csv"))
+    null_by_biome[, c("stressor", "level") := NULL]
+    null_pooled[, c("stressor", "level") := NULL]
+    # figure sizes were set for 5 levels (z01-z05): one level = one column (by biome) or row (pooled)
+    n_lev <- uniqueN(eff$level)
+    for (e in names(ENDPOINT_LABELS)) {
+      for (s in c("survival", "sterility"))
+        save_fig(plot_effect(by_biome[stressor == s], e, x$prov, "biome", "level", paste("Stressor:", s),
+                             null = null_by_biome),
+                 paste0(fig_dir, "/fig_4.4_", e, "_", s, "_by_biome.png"), 3 + 2.6 * n_lev, 20)
+      save_fig(plot_effect(pooled, e, x$prov, "level", "stressor", "All biomes pooled", null = null_pooled),
+               paste0(fig_dir, "/fig_4.4_", e, "_pooled.png"), 18, 3 + 2.2 * n_lev)
+    }
   }
-  if(item=="PFT"){
-    p <- Grd_DF_burnin_sum |>
-      ggplot() +
-      theme_minimal() +
-      labs(x="Time (years)", y="Mean Number of PFT") + 
-      scale_color_manual(
-        values=c("#64BA2B", "#A7BA2B", "#BA912B", "#BA622B", "#BA392B")) +
-      scale_x_continuous(limits=c(35, NA)) +
-      geom_line(aes(x = Time / 30, y = mean_NPFT, color=stressor_level),
-                alpha=0.5) + 
-      facet_grid(~ stressor)
-  }
-  return(p)
-}
-
-
-# ----------------------
-# POP
-# ----------------------
-
-pop_effect_prepare <- function(Grd_DF, QUANT=0.5, ratio=TRUE, rollmean=FALSE, rollmean_k=30){
-  Grd_DF_z00 = Grd_DF |>
-    dplyr::filter(stressor_level == "z00") |>
-    group_by(Time, community, stressor) |>
-    dplyr::mutate(
-      NInd_control_median = median(NInd, na.rm=TRUE),
-      totMass_control_median = median(totMass, na.rm=TRUE),
-      abovemass_control_median = median(abovemass, na.rm=TRUE),
-      NPFT_control_median = median(NPFT, na.rm=TRUE),
-      shannon_control_median = median(shannon, na.rm=TRUE)
-    ) |>
-    dplyr::mutate(
-      stressor_level=NULL,
-      NInd=NULL,
-      totMass=NULL,
-      abovemass=NULL,
-      NPFT=NULL,
-      shannon=NULL
-    )
-  
-  Grd_DF_merge = dplyr::left_join(Grd_DF, Grd_DF_z00, by=c("Time", "community", "stressor"))
-  
-  if(ratio){
-    Grd_DF_diff = Grd_DF_merge |>
-      dplyr::mutate(
-        Nind_diff = NInd / NInd_control_median,
-        totMass_diff= totMass / totMass_control_median,
-        abovemass_diff= abovemass / abovemass_control_median,
-        NPFT_diff = NPFT / NPFT_control_median,
-        shannon_diff = shannon / shannon_control_median
-      )
-  } else{
-    Grd_DF_diff = Grd_DF_merge |>
-      dplyr::mutate(
-        Nind_diff = NInd - NInd_control_median,
-        totMass_diff= totMass - totMass_control_median,
-        abovemass_diff= abovemass - abovemass_control_median,
-        NPFT_diff = NPFT - NPFT_control_median,
-        shannon_diff = shannon - shannon_control_median
-      )
-  }
-  
-  if(length(QUANT) == 1){
-    Grd_DF_diff_sum <- Grd_DF_diff |>
-      dplyr::group_by(Time, community, stressor, stressor_level) |>
-      dplyr::summarise(
-        q_NInd_diff = quantile(Nind_diff, QUANT, na.rm=TRUE),
-        q_totMass_diff = quantile(totMass_diff, QUANT, na.rm=TRUE),
-        q_abovemass_diff = quantile(abovemass_diff, QUANT, na.rm=TRUE),
-        q_NPFT_diff = quantile(NPFT_diff, QUANT, na.rm=TRUE),
-        q_shannon_diff = quantile(shannon_diff, QUANT, na.rm=TRUE)
-      )
-  } else{
-    Grd_DF_diff_sum <- Grd_DF_diff |>
-      dplyr::group_by(Time, community, stressor, stressor_level) |>
-      dplyr::summarise(
-        q_NInd_diff = quantile(Nind_diff, QUANT[1], na.rm=TRUE) - quantile(Nind_diff, QUANT[2], na.rm=TRUE),
-        q_totMass_diff = quantile(totMass_diff, QUANT[1], na.rm=TRUE) - quantile(totMass_diff, QUANT[2], na.rm=TRUE),
-        q_abovemass_diff = quantile(abovemass_diff, QUANT[1], na.rm=TRUE) - quantile(abovemass_diff, QUANT[2], na.rm=TRUE),
-        q_NPFT_diff = quantile(NPFT_diff, QUANT[1], na.rm=TRUE) - quantile(NPFT_diff, QUANT[2], na.rm=TRUE),
-        q_shannon_diff = quantile(shannon_diff, QUANT[1], na.rm=TRUE) - quantile(shannon_diff, QUANT[2], na.rm=TRUE)
-      )
-  }
-  
-  if(rollmean){
-    Grd_DF_diff_sum <- Grd_DF_diff_sum |>
-      dplyr::group_by(community, stressor, stressor_level) |>
-      dplyr::mutate(
-        q_NInd_diff = zoo::rollmean(q_NInd_diff, k = rollmean_k, fill = NA, align = "right"),
-        q_totMass_diff = zoo::rollmean(q_totMass_diff, k = rollmean_k, fill = NA, align = "right"),
-        q_abovemass_diff = zoo::rollmean(q_abovemass_diff, k = rollmean_k, fill = NA, align = "right"),
-        q_NPFT_diff = zoo::rollmean(q_NPFT_diff, k = rollmean_k, fill = NA, align = "right"),
-        q_shannon_diff = zoo::rollmean(q_shannon_diff, k = rollmean_k, fill = NA, align = "right")
-      )
-  }
-  
-  return(Grd_DF_diff_sum)
-}
-
-plot_eff_001 <- function(Grd_DF_diff_sum){
-  ggplot(data=Grd_DF_diff_sum) +
-    theme_minimal() +
-    theme(legend.position = "bottom") +
-    labs(x = "Time (years)", y = "Ratio Effect/Control Number of Individuals") +
-    scale_color_manual(
-      name="Stressor level:",
-      values=c("black", "#44C714", "#C7C714", "#C75314", "#C71414", "#7314C7")
-    )+
-    geom_line(
-      aes(x=Time/30, y = q_NInd_diff, color=stressor_level),
-      alpha=0.7) +
-    facet_grid(stressor~.)
-}
-
-plot_eff_002 <- function(Grd_DF_diff_sum){
-  ggplot(data=Grd_DF_diff_sum) +
-    theme_minimal() +
-    theme(legend.position = "bottom") +
-    labs(x = "Time (years)", y = "Ratio Effect/Control Total Mass (g)") +
-    #scale_x_continuous(limits=c(5,NA)) +
-    scale_color_manual(
-      name="Stressor level:",
-      values=c("black", "#44C714", "#C7C714", "#C75314", "#C71414", "#7314C7")
-    )+
-    geom_line(
-      aes(x=Time/30, y = q_totMass_diff, color=stressor_level),
-      alpha=0.7) +
-    facet_grid(stressor~.)
-}
-
-plot_eff_003 <- function(Grd_DF_diff_sum){
-  ggplot(data=Grd_DF_diff_sum) +
-    theme_minimal() +
-    theme(legend.position = "bottom") +
-    labs(x = "Time (years)", y = "Ratio Effect/Control Above Mass (g)") +
-    scale_color_manual(
-      name="Stressor level:",
-      values=c("black", "#44C714", "#C7C714", "#C75314", "#C71414", "#7314C7")
-    )+
-    geom_line(
-      aes(x=Time/30, y = q_abovemass_diff, color=stressor_level),
-      alpha=0.7) +
-    facet_grid(stressor~.)
-}
-
-plot_eff_004 <- function(Grd_DF_diff_sum){
-  ggplot(data=Grd_DF_diff_sum) +
-    theme_minimal() +
-    theme(legend.position = "bottom") +
-    labs(x = "Time (years)", y = "Ratio Effect/Control Above Mass (g)") +
-    scale_color_manual(
-      name="Stressor level:",
-      values=c("black", "#44C714", "#C7C714", "#C75314", "#C71414", "#7314C7")
-    )+
-    geom_line(
-      aes(x=Time/30, y = q_abovemass_diff, color=stressor_level),
-      alpha=0.7) +
-    facet_grid(stressor~stressor_level)
-}
-
-plot_eff_005 <- function(Grd_DF_diff_sum){
-  ggplot(data=Grd_DF_diff_sum) +
-    theme_minimal() +
-    theme(legend.position = "bottom") +
-    labs(x = "Time (years)", y = "Ratio Effect/Control Number PTF") +
-    scale_color_manual(
-      name="Stressor level:",
-      values=c("black", "#44C714", "#C7C714", "#C75314", "#C71414", "#7314C7")
-    )+
-    geom_line(
-      aes(x=Time/30, y = q_NPFT_diff, color=stressor_level),
-      alpha=0.7) +
-    facet_grid(stressor~.)
-}
-
-plot_eff_006 <- function(Grd_DF_diff_sum){
-  ggplot(data=Grd_DF_diff_sum) +
-    theme_minimal() +
-    theme(legend.position = "bottom") +
-    labs(x = "Time (years)", y = "Ratio Effect/Control Shannon diveristy") +
-    scale_color_manual(
-      name="Stressor level:",
-      values=c("black", "#44C714", "#C7C714", "#C75314", "#C71414", "#7314C7")
-    )+
-    geom_line(
-      aes(x=Time/30, y = q_shannon_diff, color=stressor_level),
-      alpha=0.7) +
-    facet_grid(stressor~.)
-}
-
-plot_eff_006b <- function(Grd_DF_diff_sum){
-  ggplot(data=Grd_DF_diff_sum) +
-    theme_minimal() +
-    theme(legend.position = "bottom") +
-    labs(x = "Time (years)", y = "Ratio Effect/Control Shannon diveristy") +
-    scale_color_manual(
-      name="Stressor level:",
-      values=c("black", "#44C714", "#C7C714", "#C75314", "#C71414", "#7314C7")
-    )+
-    geom_line(
-      aes(x=Time/30, y = q_shannon_diff, color=stressor_level),
-      alpha=0.7) +
-    facet_grid(stressor~stressor_level)
 }

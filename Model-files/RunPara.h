@@ -140,6 +140,8 @@ public:
 	///@}
 	//! number of monte carlo simulations
 	int MCrun;
+	//! RNG seed set again at the start of year Tinit+1 (0: no re-seed; null runs)
+	long Reseed;
 	//! constructor
 	SRunPara();
 	//! calculates the cell scale (normally 1cm)

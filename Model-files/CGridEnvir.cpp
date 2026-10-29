@@ -62,6 +62,11 @@ void CGridEnvir::OneRun(){
 	//run simulation until TMax (SRunPara::RunPara.Tmax)
 	do{
 		this->NewWeek();
+		// null run: new random stream from the first year after Tinit, as the herbicide events do in a treatment run
+		if (SRunPara::RunPara.Reseed!=0 && year==SRunPara::RunPara.Tinit+1){
+			initLCG(SRunPara::RunPara.Reseed, 3487234);
+			srand(SRunPara::RunPara.Reseed);
+		}
 		this->resetCuttedBM();
 		// run one year
 		OneYear();
@@ -137,23 +142,6 @@ void CGridEnvir::GetOutput()
    SPftOut*  PftWeek =new SPftOut();
    // for grid output
    SGridOut* GridWeek=new SGridOut();
-
-   //Individual output
-   //go through all plants
-   	   for (plant_iter iplant=PlantList.begin(); iplant<PlantList.end(); ++iplant){
-   		   //create link to plant
-   		   CTDPlant* plant = (CTDPlant*)*iplant;
-   		   //make sure to only count living plants not located at the boarder
-   		   if (!plant->dead){
-   			   //create a new struct
-   			   SIndOut* IndWeek=new SIndOut();
-   			   IndWeek->age = plant->age;
-   			   IndWeek->name = plant->pft();
-   			   IndWeek->rootmass = plant->mroot;
-   			   IndWeek->shootmass = plant->mshoot;
-   			   IndOutData.push_back(IndWeek);
-   		   }// end if not dead
-   	   } // end for all plants on grid
 
    //calculate sums for each PFT
    // for all plants

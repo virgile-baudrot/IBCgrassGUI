@@ -1,237 +1,97 @@
-library(ggplot2)
-library(tidyr)
-library(dplyr)
-library(tibble)
+# §4.1.2 Single species, stochasticity of controls and treatment: Figures 4.6 (Pt_) and 4.7 (Grd_)
+#   Rscript output-SINGLE/analyze_outputs_300.R [in_dir] [fig_dir]
+#   in_dir: outputs/4.1_single_species/variability (run_4.1_single_species.R variability)
+# n replicates of the control and of the survival treatment; replicate i of both uses seed i.
+# Raw figures: mean and 95 % interval (2.5 and 97.5 percentiles) over replicates.
+# Ratio figures:
+#   treatment (red): treatment run i / control run i (paired, exactly 1 before exposure)
+#   control (green): control run i / mean of all control runs, i.e. the variability between
+#   runs due to the stochasticity of the model alone
 
-################################################################################
-#
-# SINGLE SPECIES - SEVERAL SCENARIOS
-#
-################################################################################
-# 2. Define scenarios to map the numeric IDs
-scenarios_name <- list(
-  "Control (No Herbicide)"              = "control",
-  "Increased Mortality (Survival)"      = "treatment" # survival
-)
+source("Input-EFSA/04_output_analysis.R")
+args <- commandArgs(trailingOnly = TRUE)
+in_dir <- if (length(args) >= 1) args[1] else "outputs/4.1_single_species/variability"
+fig_dir <- if (length(args) >= 2) args[2] else "EFSA_REPORT/figures"
+dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
+prov <- read_provenance(in_dir)
 
-lookup_table <- tibble(
-  scenario_name = names(scenarios_name),
-  Scenario_Type = as.character(unlist(scenarios_name)) 
-)
+custom_colors <- c(control = "#1a9850", treatment = "#d73027")
 
-# 3. Define the exact order for the legend to match the color gradient
-legend_order <- c(
-  "Control (No Herbicide)",              # Green
-  "Increased Mortality (Survival)"      # Red
-)
-# 6. Color palette: Green for the control, warm colors for the stressors
-custom_colors <- c(
-  "control"              = "#1a9850", # Green
-  "treatment"      = "#d73027" # Red
-)
-
-################################################################################
-# Pt data
-################################################################################
-pt_long_data <- readRDS("output-SINGLE/pt_long_data_300.rds")
-
-# 4. Join and convert to factor with the specific gradient order
-pt_long_data <- pt_long_data %>%
-  left_join(lookup_table, by = "Scenario_Type") %>%
-  mutate(scenario_name = factor(scenario_name, levels = legend_order))
-
-# 5. Rename output variables (OutputVariable) for the facets
 var_labels <- c(
-  "Inds"      = "Number of Individuals (Inds)",
-  "seedlings" = "Number of Seedlings",
-  "seeds"     = "Seed Bank (Seeds)",
-  "repromass" = "Reproductive Biomass (mg)",
-  "cover"     = "Cover / Area of Influence",
-  "shootmass" = "Above-ground Shoot Biomass (mg)"
+  Inds = "Number of Individuals (Inds)",
+  seedlings = "Number of Seedlings",
+  seeds = "Seed Bank (Seeds)",
+  repromass = "Reproductive Biomass (mg)",
+  cover = "Cover / Area of Influence",
+  shootmass = "Above-ground Shoot Biomass (mg)"
 )
-
-pt_long_data_raw <- pt_long_data |>
-  dplyr::group_by(Scenario_Type, time, PFT, OutputVariable) |>
-  dplyr::summarise(
-    mean = mean(Value),
-    median = quantile(Value, 0.5),
-    qinf95 = quantile(Value, 0.025),
-    qsup95 = quantile(Value, 0.975)
-  )
-
-# pt_long_data_density <- pt_long_data |>
-#   dplyr::mutate(
-#     cat_time = dplyr::case_when(
-#       time <= 20 ~ "pre-treatment",
-#       time <= 30 ~ "treatment",
-#       TRUE       ~ "post-treatment"
-#     )
-#   )
-# ggplot(pt_long_data_density, aes(Value, fill=Scenario_Type)) +
-#   scale_x_log10() +
-#   scale_fill_manual(values = custom_colors) +
-#   facet_grid(cat_time ~ OutputVariable, scales = "free") + 
-#   geom_density(alpha=0.5)
-
-# 7. Plot 1: Raw Values (Control on top)
-plot_raw <- pt_long_data_raw %>%
-  # Sort the data so the Control is plotted last (on top of everything else)
-  # arrange(scenario_name == "Control (No Herbicide)") %>%
-  ggplot(aes(x = time/30, y = mean, ymin=qinf95, ymax=qsup95, color = Scenario_Type, fill=Scenario_Type)) +
-  geom_line(linewidth = 0.6, alpha = 0.8) +
-  geom_ribbon(linewidth = 0.05, alpha = 0.5) +
-  facet_wrap(~ OutputVariable, scales = "free_y", ncol = 2, labeller = labeller(OutputVariable = var_labels)) +
-  scale_color_manual(values = custom_colors, name="Mean") +
-  scale_fill_manual(values = custom_colors, name="95% Interval") +
-  theme_minimal() +
-  labs(
-    title = "Temporal Dynamics of Model Outputs",
-    # subtitle = "Comparison of raw values between the control and herbicide stress scenarios",
-    x = "Time (Years)",
-    y = "Output Value",
-    color = "Scenarios"
-  ) +
-  theme(
-    strip.text = element_text(face = "bold", size = 11),
-    legend.position = "bottom",
-    legend.title = element_text(face = "bold")
-  )
-print(plot_raw)
-
-
-pt_long_data_dropNA <- pt_long_data[!is.na(pt_long_data$Ratio_to_Control), ] |>
-  dplyr::group_by(Scenario_Type, time, PFT, OutputVariable) |>
-  dplyr::summarise(
-    mean = mean(Ratio_to_Control),
-    median = median(Ratio_to_Control),
-    qinf95 = quantile(Ratio_to_Control, 0.025),
-    qsup95 = quantile(Ratio_to_Control, 0.975)
-  )
-plot_ratio <- pt_long_data_dropNA %>%
-  # Same trick for the ratio plot if you want the Control line (which will be perfectly flat at 1.0) on top
-  # arrange(scenario_name == "Control (No Herbicide)") %>%
-  ggplot(aes(x = time/30, y = mean, ymin=qinf95, ymax=qsup95, color=Scenario_Type, fill=Scenario_Type)) +
-  geom_hline(yintercept = 1, linetype = "dashed", color = "black", alpha = 0.5) +
-  geom_line(linewidth = 0.6, alpha = 0.8) +
-  geom_ribbon(linewidth = 0.05, alpha = 0.5) +
-  facet_wrap(~ OutputVariable, scales = "free_y", ncol = 2, labeller = labeller(OutputVariable = var_labels)) +
-  scale_color_manual(values = custom_colors, name="Mean") +
-  scale_fill_manual(values = custom_colors, name="95% Interval") +
-  theme_minimal() +
-  labs(
-    title = "Relative Effects of Herbicide Over Time",
-    # subtitle = "Ratio (Scenario Value / Control Value) for each variable",
-    x = "Time (Years)",
-    y = "Ratio (Treatment / Control)",
-    color = "Scenarios"
-  ) +
-  theme(
-    strip.text = element_text(face = "bold", size = 11),
-    legend.position = "bottom",
-    legend.title = element_text(face = "bold")
-  )
-print(plot_ratio)
-
-################################################################################
-# Grd data
-################################################################################
-# 1. Load the data
-grd_long_data <- readRDS("output-SINGLE/grd_long_data_300.rds")
-
-# 4. Join and convert to factor with the specific gradient order
-grd_long_data <- grd_long_data %>%
-  left_join(lookup_table, by = "Scenario") %>%
-  mutate(scenario_name = factor(scenario_name, levels = legend_order))
-
-# 5. Rename output variables (OutputVariable) for the facets based on IBC-grass documentation
 var_labels_grd <- c(
-  "totMass"         = "Total Biomass (mg)",
-  "NInd"            = "Number of Individuals",
-  "abovemass"       = "Above-ground Biomass (mg)",
-  "belowmass"       = "Below-ground Biomass (mg)",
-  "mean_ares"       = "Mean Above-ground Resources",
-  "mean_bres"       = "Mean Below-ground Resources",
-  "shannon"         = "Shannon Diversity Index",
-  "meanShannon"     = "Mean Shannon Diversity",
-  "NPFT"            = "PFT Richness (Count)",
-  "meanNPFT"        = "Mean PFT Richness",
-  "Cutted"          = "Harvested Biomass (Cut)",
-  "NNonClonal"      = "Number of Non-Clonal Plants",
-  "NClonal"         = "Number of Clonal Plants",
-  "mean_generation" = "Mean Generation Age",
-  "mean_genet_size" = "Mean Genet Size",
-  "NGenets"         = "Number of Genets"
-)
+  totMass = "Total Biomass (mg)",
+  NInd = "Number of Individuals",
+  abovemass = "Above-ground Biomass (mg)",
+  belowmass = "Below-ground Biomass (mg)",
+  mean_ares = "Mean Above-ground Resources",
+  mean_bres = "Mean Below-ground Resources",
+  Cutted = "Harvested Biomass (Cut)",
+  mean_generation = "Mean Generation Age",
+  mean_genet_size = "Mean Genet Size"
+) # meanShannon, meanNPFT, NNonClonal, NClonal, NGenets: one end-of-run value (R§5.2)
 
+to_long <- function(dt, vars) {
+  dt[, (vars) := lapply(.SD, as.numeric), .SDcols = vars]
+  long <- melt(dt, id.vars = c("stressor", "rep", "Time"), measure.vars = vars,
+               variable.name = "OutputVariable", value.name = "Value", variable.factor = FALSE)
+  long[, Scenario_Type := fifelse(stressor == "NO", "control", "treatment")]
+  ctl <- long[Scenario_Type == "control", .(rep, Time, OutputVariable, Control_Value = Value)]
+  long <- ctl[long, on = .(rep, Time, OutputVariable)]
+  long[, Control_Mean := mean(Control_Value), by = .(Time, OutputVariable)]
+  long[, Ratio := fifelse(Scenario_Type == "control",
+                          fifelse(Control_Mean > 0, Value / Control_Mean, NA_real_),
+                          fifelse(Control_Value > 0, Value / Control_Value, NA_real_))]
+  long
+}
 
-# 7. Plot 1: Raw Values (Control on top)
-grd_long_data_raw <- grd_long_data |>
-  dplyr::group_by(Scenario_Type, time, OutputVariable) |>
-  dplyr::summarise(
-    mean = mean(Ratio_to_Control),
-    median = median(Ratio_to_Control, na.rm=TRUE),
-    qinf95 = quantile(Ratio_to_Control, 0.025, na.rm=TRUE),
-    qsup95 = quantile(Ratio_to_Control, 0.975, na.rm=TRUE)
-  )
-plot_raw <- grd_long_data_raw %>%
-  # Sort the data so the Control is plotted last (on top of everything else)
-  # arrange(scenario_name == "Control (No Herbicide)") %>%
-  ggplot(aes(x = time/30, y = mean, ymin=qinf95, ymax=qsup95, color=Scenario_Type, fill=Scenario_Type)) +
-  geom_line(linewidth = 0.6, alpha = 0.8) +
-  geom_ribbon(linewidth = 0.05, alpha = 0.5) +
-  facet_wrap(~ OutputVariable, scales = "free_y", ncol = 4, labeller = labeller(OutputVariable = var_labels_grd)) +
-  scale_color_manual(values = custom_colors, name="Mean") +
-  scale_fill_manual(values = custom_colors, name="95% Interval") +
-  theme_minimal() +
-  labs(
-    title = "Community-Level Dynamics (Grid Outputs)",
-    # subtitle = "Raw values of spatial, resource, and biodiversity metrics over time",
-    x = "Time (Years)",
-    y = "Output Value",
-    color = "Scenarios"
-  ) +
-  theme(
-    strip.text = element_text(face = "bold", size = 9),
-    legend.position = "bottom",
-    legend.title = element_text(face = "bold")
-  )
+summarise_reps <- function(long, y) {
+  long[!is.na(get(y)), .(mean = mean(get(y)),
+                         qinf95 = quantile(get(y), 0.025, names = FALSE),
+                         qsup95 = quantile(get(y), 0.975, names = FALSE)),
+       by = .(Scenario_Type, Time, OutputVariable)]
+}
 
-print(plot_raw)
+plot_band <- function(s, labels, ncol, title, ylab, ref = NULL) {
+  ggplot(s, aes(x = Time / 30, y = mean, ymin = qinf95, ymax = qsup95,
+                color = Scenario_Type, fill = Scenario_Type)) +
+    phase_layer(prov) +
+    (if (!is.null(ref)) geom_hline(yintercept = ref, linetype = "dashed", color = "black", alpha = 0.5)) +
+    geom_ribbon(linewidth = 0.05, alpha = 0.4) +
+    geom_line(linewidth = 0.6, alpha = 0.8) +
+    facet_wrap(~ OutputVariable, scales = "free_y", ncol = ncol,
+               labeller = labeller(OutputVariable = labels)) +
+    scale_color_manual(values = custom_colors, name = "Mean") +
+    scale_fill_manual(values = custom_colors, name = "95% Interval") +
+    theme_minimal() +
+    labs(title = title, x = "Time (Years)", y = ylab) +
+    theme(strip.text = element_text(face = "bold", size = 9),
+          legend.position = "bottom", legend.title = element_text(face = "bold"))
+}
 
+# ---------------- Pt data (Figure 4.6) ----------------
+pt <- fread(file.path(in_dir, "Pt.csv.gz"))[, seed := NULL]
+pt <- complete_pt(pt, c("stressor", "rep"), "rep") # zeros when the species is absent
+pt_long <- to_long(pt, names(var_labels))
+save_fig(plot_band(summarise_reps(pt_long, "Value"), var_labels, 2,
+                   "Temporal Dynamics of Model Outputs", "Output Value"),
+         file.path(fig_dir, "fig_4.1_variability_Pt_raw.png"), 16, 16)
+save_fig(plot_band(summarise_reps(pt_long, "Ratio"), var_labels, 2,
+                   "Relative Effects of Herbicide Over Time", "Ratio to control", ref = 1),
+         file.path(fig_dir, "fig_4.1_variability_Pt_ratio.png"), 16, 16)
 
-grd_long_data_dropNA <- grd_long_data[!is.na(grd_long_data$Ratio_to_Control), ] |>
-  dplyr::group_by(Scenario_Type, time, OutputVariable) |>
-  dplyr::summarise(
-    mean = mean(Ratio_to_Control),
-    median = median(Ratio_to_Control, na.rm=TRUE),
-    qinf95 = quantile(Ratio_to_Control, 0.025, na.rm=TRUE),
-    qsup95 = quantile(Ratio_to_Control, 0.975, na.rm=TRUE)
-  )
-
-plot_ratio <- grd_long_data_dropNA %>%
-  # arrange(scenario_name == "Control (No Herbicide)") %>%
-  ggplot(aes(x = time/30, y = mean, ymin=qinf95, ymax=qsup95, color=Scenario_Type, fill=Scenario_Type)) +
-  geom_hline(yintercept = 1, linetype = "dashed", color = "black", alpha = 0.5) +
-  geom_line(linewidth = 0.6, alpha = 0.8) +
-  geom_ribbon(linewidth = 0.05, alpha = 0.5) +
-  facet_wrap(~ OutputVariable, scales = "free_y", ncol = 4, labeller = labeller(OutputVariable = var_labels_grd)) +
-  scale_color_manual(values = custom_colors, name="Mean") +
-  scale_fill_manual(values = custom_colors, name="95% Interval") +
-  theme_minimal() +
-  labs(
-    title = "Relative Herbicide Effects on Community Structure",
-    # subtitle = "Ratio (Scenario Value / Control Value) for grid variables",
-    x = "Time (Years)",
-    y = "Ratio (Treatment / Control)",
-    color = "Scenarios"
-  ) +
-  theme(
-    strip.text = element_text(face = "bold", size = 9),
-    legend.position = "bottom",
-    legend.title = element_text(face = "bold")
-  )
-
-print(plot_ratio)
-
-
-
+# ---------------- Grd data (Figure 4.7) ----------------
+grd <- fread(file.path(in_dir, "Grd.csv.gz"))
+grd_long <- to_long(grd, names(var_labels_grd))
+save_fig(plot_band(summarise_reps(grd_long, "Value"), var_labels_grd, 3,
+                   "Community-Level Dynamics (Grid Outputs)", "Output Value"),
+         file.path(fig_dir, "fig_4.1_variability_Grd_raw.png"), 18, 16)
+save_fig(plot_band(summarise_reps(grd_long, "Ratio"), var_labels_grd, 3,
+                   "Relative Herbicide Effects on Community Structure", "Ratio to control", ref = 1),
+         file.path(fig_dir, "fig_4.1_variability_Grd_ratio.png"), 18, 16)

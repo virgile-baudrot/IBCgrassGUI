@@ -183,7 +183,9 @@ int main(int argc, char* argv[])
 	#endif
 
 
-	initLCG( pid, 3487234);
+	long int seed=pid;
+	if (argc>=20) seed=atol(argv[19]); // optional 19th argument: RNG seed (paired runs)
+	initLCG( seed, 3487234);
 	if (argc>=2) {
 		// example parameters:
 		// 3 50 5 1 Fieldedge.txt 10 90 100 0 0.1 0.01 1 1 1 0 0 1 1
@@ -211,6 +213,7 @@ int main(int argc, char* argv[])
 		SRunPara::RunPara.EffectModel=atoi(argv[16]); // defines on which input herbicide effects are based (0 - txt file 2 - dose response)
 		SRunPara::RunPara.scenario=atof(argv[17]); // number of scenario
 		SRunPara::RunPara.MCrun=atoi(argv[18]); // number of monte carlo runs
+		if (argc>=21) SRunPara::RunPara.Reseed=atol(argv[20]); // optional 20th argument: RNG seed from year Tinit+1 on (null runs)
 }
 
 	SRunPara::RunPara.GridSize=SRunPara::RunPara.CellNum; // normally 173 for pot experiments smaller
@@ -234,7 +237,7 @@ int main(int argc, char* argv[])
 	strd<<"Grd_"<<idstr<<".txt";
 	Envir->NameGridOutFile=strd.str();
 	//needed for random_shuffle()
-	srand (time (0));
+	srand (argc>=20 ? seed : time (0));
 	// initialize run
 	Init();
 	// start run

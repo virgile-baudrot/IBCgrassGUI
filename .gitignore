@@ -3,3 +3,7 @@
 .RData
 .Ruserdata
 R
+
+# model build products
+Model-files/*.o
+Model-files/IBCgrassGUI

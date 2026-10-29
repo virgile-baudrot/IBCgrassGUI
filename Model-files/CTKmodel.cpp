@@ -183,7 +183,7 @@ SEffProfile* CTKmodel::getProfileProxy(string PFT,int year)
 			// effect on seed number
 			slope_seednumber = SPftTraits::PftLinkList.find(PFT)->second->slope_seednumber;
 			// get the application rates (as RunPara)
-			int rate;
+			double rate;
 			rate=AppRateTimeline[year-SRunPara::RunPara.Tinit-1];
 			// set effect on establishment (seeds)
 			if(EC50_establishment>0)	dummi->pEstabSeedFac=pow(rate,slope_establishment)/(pow(EC50_establishment,slope_establishment)+pow(rate,slope_establishment));
@@ -283,7 +283,7 @@ SEffProfile* CTKmodel::getProfileProxySeeds(string PFT,int year)
 			// effect on seed number
 			slope_seednumber = SPftTraits::PftLinkList.find(PFT)->second->slope_seednumber;
 			// get the application rates (as RunPara)
-			int rate;
+			double rate;
 			rate=AppRateTimeline[year-SRunPara::RunPara.Tinit-1];
 			// set effect on establishment (seeds)
 			if(EC50_establishment>0)	dummi->pEstabSeedFac=pow(rate,slope_establishment)/(pow(EC50_establishment,slope_establishment)+pow(rate,slope_establishment));

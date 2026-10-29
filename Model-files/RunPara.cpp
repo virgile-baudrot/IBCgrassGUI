@@ -32,7 +32,7 @@ SRunPara::SRunPara():Version(version2),AboveCompMode(asympart),BelowCompMode(sym
   Aampl(0),Bampl(0),
   Generation("F0"),
   scenario(0),
-  ITVsd(0.0)
+  ITVsd(0.0),Reseed(0)
 {}
 //-------------------------------------------------------------------
 /**

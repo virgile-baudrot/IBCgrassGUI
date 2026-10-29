@@ -1,0 +1,9 @@
+outputs/
+.git/
+output-*/
+EFSA_REPORT/
+reference/
+report/
+Manual*
+Model-files/*.o
+Model-files/IBCgrassGUI
