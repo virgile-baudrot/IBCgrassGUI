@@ -1,0 +1,3 @@
+BOR_I1 g250 : 5 runs of 88 species
+Error in run_design(d) : 5 run(s) failed in /tmp/out/BOR_I1/g250
+Execution halted

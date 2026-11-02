@@ -8,4 +8,4 @@ export RCLONE_CONFIG_SCW_TYPE=s3 RCLONE_CONFIG_SCW_PROVIDER=Scaleway RCLONE_CONF
 RCLONE_CONFIG_SCW_ACCESS_KEY_ID="$(scw config get access-key)"
 RCLONE_CONFIG_SCW_SECRET_ACCESS_KEY="$(scw config get secret-key)"
 export RCLONE_CONFIG_SCW_ACCESS_KEY_ID RCLONE_CONFIG_SCW_SECRET_ACCESS_KEY
-rclone copy --progress "scw:${BUCKET:?set BUCKET to your Object Storage bucket}/$prefix" "outputs/$prefix"
+rclone copy --progress "scw:${BUCKET:-ibcgrass-efsa-runs}/$prefix" "outputs/$prefix"

@@ -8,8 +8,8 @@
 #        (treatments of these levels only, 24 runs per job run, see run_4.4_stressor_effects.R)
 # A job run that fails is simply started again with the same (biome, MC): same seed, same result.
 set -euo pipefail
-JOB_ID="${JOB_ID:?set JOB_ID to the id of your Scaleway job definition}"
-BUCKET="${BUCKET:?set BUCKET to your Object Storage bucket}"
+JOB_ID="${JOB_ID:-b7b866d3-b307-4011-816c-9acfdeacd3af}" # job definition "ibcgrass-efsa"
+BUCKET="${BUCKET:-ibcgrass-efsa-runs}"
 prefix="${1:?prefix (e.g. main-2026-10-30)}"
 nmc="${2:-10}"
 if [ $# -gt 2 ]; then biomes=("${@:3}"); else biomes=(STE_I1 BLS_I1 ALP_I1 ATL_I1 BOR_I1 CON_I1 PAN_I1 MED_I1 MAC_I1); fi

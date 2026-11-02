@@ -7,8 +7,8 @@
 # Designs are those of run_4.3_control_design.R ("nodom" needs the "full" outputs in the same
 # job and cannot run alone here). A failed job run is started again with the same arguments.
 set -euo pipefail
-JOB_ID="${JOB_ID:?set JOB_ID to the id of your Scaleway job definition}"
-BUCKET="${BUCKET:?set BUCKET to your Object Storage bucket}"
+JOB_ID="${JOB_ID:-b7b866d3-b307-4011-816c-9acfdeacd3af}" # job definition "ibcgrass-efsa"
+BUCKET="${BUCKET:-ibcgrass-efsa-runs}"
 prefix="${1:?prefix (e.g. control-2026-10-28)}"
 if [ $# -gt 1 ]; then designs=("${@:2}"); else designs=(full s50 s25 s10); fi
 read -r -a biomes <<< "${BIOMES:-STE_I1 BLS_I1 ALP_I1 ATL_I1 BOR_I1 CON_I1 PAN_I1 MED_I1 MAC_I1}"

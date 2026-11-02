@@ -11,6 +11,11 @@
 #                    nested: replicate i of s10 is in s25, which is in s50 (one random
 #                    order of the pool per biome and replicate, its first n species)
 #            nested - full, then s50, s25 and s10 (revised §4.2/§4.3, Oct 2026)
+#            g010, g025, g050, g100, g173, g250, g300, g350, g500, g700 - the whole pool on
+#                    a grid of 10 x 10 to 700 x 700 cells, trampling off (tramp = 0, grids below 57 x 57 have no
+#                    trampling patch, R§5.3). Replicate i uses the same seed at every size, so
+#                    only the grid size changes (§4.3.2, Oct 2026)
+#            grid   - g010 to g173 (30 Oct 2026); larger grids are started one by one
 #
 # Controls only (no herbicide code, HerbEffectType = 0), 173 x 173 cells, 50 years,
 # n_rep replicates per design, each with its own seed (logged in runs.csv).
@@ -24,7 +29,9 @@ biome <- if (length(args) >= 1) args[1] else "BOR_I1"
 design <- if (length(args) >= 2) args[2] else "all"
 out_root <- if (length(args) >= 3) args[3] else "outputs/4.3_control_design"
 ncores <- as.integer(if (length(args) >= 4) args[4] else parallel::detectCores())
-stopifnot(biome %in% BIOMES, design %in% c("full", "nodom", "r20", "all", "s50", "s25", "s10", "nested"))
+stopifnot(biome %in% BIOMES, design %in% c("full", "nodom", "r20", "all", "s50", "s25", "s10", "nested", "grid",
+                                    "g010", "g025", "g050", "g100", "g173", "g250", "g300", "g350",
+                                    "g500", "g700"))
 
 # ---------------- design parameters ----------------
 p <- default_params(CellNum = 173, Tmax = 50, Tinit = 20, HerbDuration = 10, cut = 0)
@@ -40,7 +47,9 @@ for (k in c("CellNum", "Tmax")) { # test runs only
 # ---------------------------------------------------
 
 pool <- read_species_pool(biome, exclude_crops = exclude_crops)
-design_id <- c(full = 1L, nodom = 2L, r20 = 3L, s50 = 4L, s25 = 5L, s10 = 6L)
+design_id <- c(full = 1L, nodom = 2L, r20 = 3L, s50 = 4L, s25 = 5L, s10 = 6L, grid = 7L)
+grid_size <- c(g010 = 10, g025 = 25, g050 = 50, g100 = 100, g173 = 173, g250 = 250, g300 = 300,
+               g350 = 350, g500 = 500, g700 = 700)
 n_nested <- c(s50 = 50L, s25 = 25L, s10 = 10L)
 
 # rank species by their mean number of individuals at week 20 of the last rank_years years
@@ -57,13 +66,16 @@ run_design <- function(d) {
   out_dir <- file.path(out_root, biome, d)
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
   species <- pool
+  pd <- p
+  if (d %in% names(grid_size)) pd <- modifyList(p, list(CellNum = grid_size[[d]], tramp = 0))
   if (d == "nodom") {
     f <- file.path(out_root, biome, "full", "dominance.csv")
     if (!file.exists(f)) stop("run the 'full' design first: ", f, " is missing")
     dom <- fread(f)
     species <- pool[!pool$Species_model %in% dom[rank <= n_dominant, PFT], ]
   }
-  seeds <- 300000L + 1000L * match(biome, BIOMES) + 100L * design_id[[d]] + seq_len(n_rep)
+  id <- if (d %in% names(grid_size)) design_id[["grid"]] else design_id[[d]]
+  seeds <- 300000L + 1000L * match(biome, BIOMES) + 100L * id + seq_len(n_rep)
   communities <- lapply(seq_len(n_rep), function(i) {
     if (d == "r20") {
       set.seed(seeds[i])
@@ -80,7 +92,8 @@ run_design <- function(d) {
     run_dir = file.path(out_dir, "runs", sprintf("rep%02d", i)),
     fieldedge = build_Fieldedge(communities[[i]], sens = 0),
     herbfact = build_HerbFact(p$HerbDuration, "NO"),
-    p = p, seed = seeds[i], herb = 0, scenario = design_id[[d]], MC = i))
+    p = pd, seed = seeds[i], herb = 0, scenario = id, MC = i,
+    guard = if (d %in% names(grid_size)) 11.5 * 3600 else 3600)) # large grids: below the 12 h job timeout
   cat(biome, d, ":", n_rep, "runs of", sapply(communities, nrow)[1], "species\n")
 
   status <- run_many(jobs, ncores)
@@ -89,7 +102,7 @@ run_design <- function(d) {
   fwrite(rbindlist(lapply(seq_len(n_rep), function(i)
     data.table(rep = i, Species = communities[[i]]$Species_model, MaxAge = communities[[i]]$MaxAge))),
     file.path(out_dir, "communities.csv"))
-  write_provenance(out_dir, p, list(script = "run_4.3_control_design.R", biome = biome, design = d,
+  write_provenance(out_dir, pd, list(script = "run_4.3_control_design.R", biome = biome, design = d,
                                     seeds = seeds, n_species = if (d %in% names(n_nested)) n_nested[[d]] else n_species,
                                     n_dominant = n_dominant,
                                     exclude_crops = exclude_crops))
@@ -98,9 +111,10 @@ run_design <- function(d) {
   out <- collect_outputs(status[, .(run_dir, biome, design, rep, seed)])
   fwrite(out$Pt, file.path(out_dir, "Pt.csv.gz"))
   fwrite(out$Grd, file.path(out_dir, "Grd.csv.gz"))
-  if (d == "full") fwrite(rank_dominance(out$Pt, p$Tmax), file.path(out_dir, "dominance.csv"))
+  if (d == "full") fwrite(rank_dominance(out$Pt, pd$Tmax), file.path(out_dir, "dominance.csv"))
   unlink(file.path(out_dir, "runs"), recursive = TRUE)
 }
 
-designs <- switch(design, all = c("full", "nodom", "r20"), nested = c("full", "s50", "s25", "s10"), design)
+designs <- switch(design, all = c("full", "nodom", "r20"), nested = c("full", "s50", "s25", "s10"),
+                  grid = names(grid_size)[1:5], design)
 for (d in designs) run_design(d)

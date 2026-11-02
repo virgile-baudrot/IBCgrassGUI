@@ -14,7 +14,6 @@ trait_cols <- c("LMR", "MaxMass..mg.", "mSeed..mg.", "Dist..m.", "Gmax", "SLA.co
 dBE2TH_full <- dBE2TH_full[complete.cases(dBE2TH_full[, trait_cols]), ]
 dBE2TH_full <- dBE2TH_full[dBE2TH_full$Note != "Tree", ] # remove Trees
 write.csv(dBE2TH_full, file="Input-EFSA/BE2TH_cleaned.csv", row.names=FALSE)
-file.copy("Input-EFSA/BE2TH_cleaned.csv", "Input-SINGLE/BE2TH_cleaned.csv", overwrite=TRUE)
 
 # select biogeography
 # "STE_I1", "ANA_I1", "BLS_I1", "ALP_I1", "ATL_I1", "BOR_I1", "CON_I1", "PAN_I1", "MED_I1", "MAC_I1"

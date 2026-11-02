@@ -1,5 +1,78 @@
 # IBCgrassGUI
 Individual-based community model for grassland communities: version with herbicide impacts. Incl. graphical user interface
+
+## About this fork (EFSA TASK 5-8 report)
+
+This repository is a fork of [JetteReeg/IBCgrassGUI](https://github.com/JetteReeg/IBCgrassGUI)
+(last upstream commit `e0dd994`). It was made by Virgile Baudrot (Qonfluens) for the EFSA
+report "Review of IBC grass model for Risk Assessment" (TASK 5-8). It contains the code used to
+run the simulations of the report, the R scripts that draw its figures, the figures, and the
+simulation outputs they are drawn from. The model itself is the one of Jette Reeg; the changes
+listed below are small and are needed to run it in batch on Linux and to pair the runs.
+
+### What was changed in the model (`Model-files/`)
+
+| File | Change | Effect on the results |
+|---|---|---|
+| `GMHerbicideEffect.cpp` | Optional 19th argument: seed of the random number generator. It is used for `initLCG` and `srand`. Without it, the seed is the process ID and the time, as before. | A control run and its treatment runs can use the same seed (paired runs). |
+| `GMHerbicideEffect.cpp`, `CGridEnvir.cpp`, `RunPara.*` | Optional 20th argument: a second seed, set again at the start of year Tinit+1. | Gives a "null run": a control that only differs from its paired control by the random stream after Tinit, as a treatment run does. It measures the effect of stochasticity alone. |
+| `CTKmodel.cpp` | The application rate is read as a `double` instead of an `int`. | Before, rates below 1 were truncated to 0 and other rates were rounded down. Results with integer rates are unchanged. |
+| `SPftTraits.cpp` | The PFT file reader stops with an error when a mandatory trait is missing or is not a number (e.g. `NA`). | Before, such values were read as 0, and `memory = 0` made the run loop without end. `overwintering` and `comp_power` stay optional. |
+| `CGridEnvir.cpp` | The per-plant output buffer (`IndOutData`) is no longer filled. | It was never written to a file. Removing it saves memory and time. No output changes. |
+| `Makefile` (new) | Builds the static command-line binary on Linux: `make -C Model-files`. | None. |
+
+### What was added
+
+- `Input-EFSA/`: scripts of the report.
+  - `00_*.R`, `01_create_BE2TH_FieldEdge.R`: species input built from the BE2TH trait data base (life span mapped to the trait `MaxAge`, species with a missing trait removed).
+  - `02_simulation_setting.R`: settings and helpers shared by the run scripts (species sensitivity distribution in txt mode, seeds, call of the model).
+  - `run_4.1_single_species.R`, `run_4.3_control_design.R`, `run_4.4_stressor_effects.R`: one run script per section of Chapter 4. Each run has its own directory, its seed and a `provenance*.json` file.
+  - `04_output_analysis.R` to `18_yearly_mean_endpoints.R` (except `11`), `BE2TH_explore.R`: figures and tables of the report (§1, §4.2 to §4.4). The section and the figure are given at the top of each script.
+  - `scaleway/`: Docker image and scripts used to run §4.3 and §4.4 on Scaleway Serverless Jobs.
+  - `archive/`: earlier scripts, kept for the record. They are not used for the figures of the report.
+- `output-SINGLE/analyze_outputs_100.R`, `analyze_outputs_300.R`: figures of §4.1.
+- `EFSA_REPORT/figures/`: the figures and tables of the report, one folder per section.
+- `outputs/`: the simulation outputs read by the figure scripts (stored with Git LFS, see below).
+- `Dockerfile`, `Dockerfile.vnc`, `start.sh`, `run_control.R`, `run_herbicide.R`: run the model without the GUI, or the GUI in a browser (see the end of this file).
+
+### What was not changed
+
+- The ecological processes of IBC-grass (growth, competition, seed production, dispersal, germination, mortality, grazing, trampling, cutting) and the herbicide effect model (dose-response and txt modes).
+- The default parameters (`Model-files/RunParams.txt`, `Input-files/`) and the PFT definitions of the GUI.
+- The graphical user interface (`R-files/`). Only the order of the loaded packages was changed, for Linux.
+- When the two new optional arguments are not given, the model runs as the upstream version.
+
+The bundled Windows R distribution (`R/`) and the R libraries (`Rlibraries/`) of the upstream
+repository were removed. R and the packages are installed by the Dockerfiles instead.
+
+### Simulation outputs (Git LFS)
+
+The outputs are stored with [Git LFS](https://git-lfs.com) (about 2.3 GB). Install Git LFS
+before cloning, or run `git lfs pull` after the clone.
+
+| Folder | Content | Read by |
+|---|---|---|
+| `outputs/4.1_single_species/` | §4.1, single species (stressors and variability) | `output-SINGLE/analyze_outputs_*.R` |
+| `outputs/control-2026-10-28/` | §4.2 and §4.3.1, control runs (9 biomes, 4 initial sizes, 5 replicates) | `10`, `12`, `13`, `15` |
+| `outputs/grid-2026-10-30/` | §4.3.2, grid sizes 10 x 10 to 350 x 350 (Boreal pool) | `14`, `15` |
+| `outputs/main-2026-10-27/` | §4.4, stressor effects (9 biomes, 10 communities per biome, SSD levels z01 to z09) | `04` to `10`, `16` to `18` |
+
+Each run directory holds the `Grd.csv.gz` and `Pt.csv.gz` outputs of the model, `runs.csv` and a
+`provenance*.json` file (date, commit, seed and settings of the run). The figures are drawn
+from the repository root, for example:
+
+```bash
+Rscript Input-EFSA/16_report_4.4_figures.R
+```
+
+To run the simulations again, build the model (`make -C Model-files`) and run the
+`Input-EFSA/run_*.R` script of the section. The full §4.4 design was run on Scaleway
+(`Input-EFSA/scaleway/README.md`).
+
+---
+
+*The original README of Jette Reeg follows.*
+
 ## Author
 Jette Reeg
 ### Authors of earlier versions of IBCgrass
